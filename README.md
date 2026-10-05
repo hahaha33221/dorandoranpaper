@@ -18,7 +18,7 @@
 2. 이 폴더에서 실행합니다.
 
    ```bash
-   node tools/build.mjs
+   npm run build
    ```
 
 3. 바뀐 `public/data.js`를 커밋하고 푸시하면 자동으로 배포됩니다.
@@ -49,6 +49,6 @@
 ## 미리보기
 
 ```bash
-python3 -m http.server 5178 -d public
+npm run dev
 ```
-→ http://localhost:5178
+→ http://localhost:5178 (`public/` 파일을 고치면 브라우저가 자동 새로고침)

@@ -1,0 +1,14 @@
+{
+  "name": "dorandoranpaper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "도란도란 롤링페이퍼",
+  "type": "module",
+  "scripts": {
+    "dev": "node tools/dev.mjs",
+    "build": "node tools/build.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
