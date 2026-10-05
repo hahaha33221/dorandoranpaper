@@ -1,0 +1,9 @@
+# 비공개 원본 — 절대 커밋하지 마세요
+*.xlsx
+*.xls
+*.csv
+*.pdf
+
+.DS_Store
+.claude/
+node_modules/

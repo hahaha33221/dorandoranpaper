@@ -1,0 +1,68 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 비공개 파일이 커밋되지 않았는지 확인
+        run: |
+          leaked=$(git ls-files | grep -Ei '\.(xlsx|xls|csv)$' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::비공개 파일이 저장소에 포함되어 있어요: $leaked"
+            exit 1
+          fi
+
+      - name: 문법 검사
+        run: |
+          node --check public/app.js
+          node --check tools/build.mjs
+          node --check public/data.js
+
+      - name: 데이터 확인
+        run: |
+          node -e '
+            const window = {};
+            eval(require("fs").readFileSync("public/data.js", "utf8"));
+            const d = window.ROLLING_DATA;
+            const n = d && d.entries ? Object.keys(d.entries).length : 0;
+            if (!d || !d.salt || !d.iterations || !n) { console.error("data.js 형식이 올바르지 않아요"); process.exit(1); }
+            console.log("멘티 " + n + "명 데이터 확인");
+          '
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: public
+
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
