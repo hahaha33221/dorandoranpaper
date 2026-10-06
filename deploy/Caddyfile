@@ -1,10 +1,13 @@
+# standalone 모드 전용 (80/443이 비어 있는 서버)
 # HTTPS 인증서는 Caddy가 자동 발급 (Let's Encrypt)
 {$API_DOMAIN} {
 	encode gzip
-	handle /api/* {
+	# /dorandoran-api/login → api:8787/api/login
+	handle_path /dorandoran-api/* {
+		rewrite * /api{uri}
 		reverse_proxy api:8787
 	}
 	handle {
-		respond "dorandoran api" 200
+		respond "dorandoran" 200
 	}
 }

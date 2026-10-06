@@ -1,27 +1,57 @@
-# VPS: docker compose up -d --build
+# 도란도란 API — 다른 서비스와 같은 VPS에서 겹치지 않게 구성
+#
+# 기본(proxy 모드): API를 127.0.0.1:${API_PORT} 에만 열고,
+#   이미 쓰고 있는 웹서버(nginx/Caddy 등)가 /dorandoran-api/ 경로만 넘겨줍니다.
+#   → 80/443 포트를 건드리지 않음
+#
+# standalone 모드: 80/443이 비어 있는 서버에서만 사용 (.env 에 COMPOSE_PROFILES=standalone)
+#   → 전용 Caddy가 HTTPS 인증서까지 처리
+name: dorandoran
+
 services:
   api:
     build: .
+    image: dorandoran-api:latest
+    container_name: dorandoran-api
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:${API_PORT:-18787}:8787" # 외부 공개 X, 같은 서버의 프록시만 접근
     volumes:
       - ./data:/app/data # SQLite DB + seed.json
-    expose:
-      - "8787"
+    networks: [dorandoran]
+    mem_limit: 256m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
 
   caddy:
+    profiles: [standalone]
     image: caddy:2-alpine
+    container_name: dorandoran-caddy
     restart: unless-stopped
     depends_on: [api]
     ports:
       - "80:80"
       - "443:443"
     environment:
-      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN 을 .env 에 설정하세요}
+      API_DOMAIN: ${API_DOMAIN:-localhost}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks: [dorandoran]
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  dorandoran:
+    name: dorandoran
 
 volumes:
   caddy_data:
+    name: dorandoran_caddy_data
   caddy_config:
+    name: dorandoran_caddy_config

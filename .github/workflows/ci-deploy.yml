@@ -44,6 +44,12 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/letters)" = 401
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"login":"x","password":"y"}' http://127.0.0.1:8787/api/login)" = 401
 
+      - name: 배포 설정 검사
+        run: |
+          bash -n deploy/setup-vps.sh
+          API_DOMAIN=example.com docker compose config -q
+          COMPOSE_PROFILES=standalone API_DOMAIN=example.com docker compose config -q
+
       - name: Docker 이미지 빌드
         run: docker build -t dorandoran-api .
 
@@ -76,6 +82,7 @@ jobs:
             git fetch --quiet origin main
             git reset --hard origin/main
             docker compose up -d --build --remove-orphans
-            docker image prune -f >/dev/null
             sleep 3
             docker compose exec -T api wget -qO- http://127.0.0.1:8787/api/health
+            echo
+            docker compose ps
