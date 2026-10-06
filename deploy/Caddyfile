@@ -1,0 +1,10 @@
+# HTTPS 인증서는 Caddy가 자동 발급 (Let's Encrypt)
+{$API_DOMAIN} {
+	encode gzip
+	handle /api/* {
+		reverse_proxy api:8787
+	}
+	handle {
+		respond "dorandoran api" 200
+	}
+}

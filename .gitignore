@@ -7,3 +7,6 @@
 .DS_Store
 .claude/
 node_modules/
+private/
+data/
+.env

@@ -1,0 +1,27 @@
+# VPS: docker compose up -d --build
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data # SQLite DB + seed.json
+    expose:
+      - "8787"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN 을 .env 에 설정하세요}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,81 @@
+name: CI / Deploy API to VPS
+
+# 프론트엔드(public/)는 Vercel이 GitHub 연동으로 자동 배포합니다.
+# 이 워크플로는 검사 후 API 서버를 VPS에 배포합니다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: 비공개 파일이 커밋되지 않았는지 확인
+        run: |
+          leaked=$(git ls-files | grep -Ei '\.(xlsx|xls|csv|db)$|^private/|^data/|(^|/)seed\.json$|(^|/)\.env$' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::비공개 파일이 저장소에 포함되어 있어요: $leaked"
+            exit 1
+          fi
+
+      - name: 문법 검사
+        run: |
+          for f in public/app.js server/*.mjs tools/*.mjs; do node --check "$f"; done
+
+      - name: API 서버 동작 확인
+        run: |
+          mkdir -p /tmp/doran
+          DATA_DIR=/tmp/doran PORT=8787 node --disable-warning=ExperimentalWarning server/index.mjs &
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:8787/api/health && break; sleep 0.5; done
+          curl -fs http://127.0.0.1:8787/api/health | grep -q '"ok":true'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/letters)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"login":"x","password":"y"}' http://127.0.0.1:8787/api/login)" = 401
+
+      - name: Docker 이미지 빌드
+        run: docker build -t dorandoran-api .
+
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: VPS 설정 확인
+        id: cfg
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "::warning::VPS_HOST 시크릿이 없어 배포를 건너뜁니다. README의 'VPS 배포' 단계를 확인하세요."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: VPS에 배포
+        if: steps.cfg.outputs.skip != 'true'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            cd /opt/dorandoran
+            git fetch --quiet origin main
+            git reset --hard origin/main
+            docker compose up -d --build --remove-orphans
+            docker image prune -f >/dev/null
+            sleep 3
+            docker compose exec -T api wget -qO- http://127.0.0.1:8787/api/health

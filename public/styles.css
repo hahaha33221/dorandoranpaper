@@ -381,3 +381,48 @@ body.is-locked { overflow: hidden; }
 .login input::placeholder { color: var(--muted); letter-spacing: 0; }
 .login .pill:disabled { opacity: .7; cursor: progress; transform: none; box-shadow: none; }
 .login .lock__msg { margin: -8px 0 0; }
+
+/* ---------- 멘토: 편지 쓰기 ---------- */
+.mentor__status {
+  margin: -8px 0 clamp(24px, 4vw, 36px);
+  font-size: 16px;
+  font-weight: 500;
+  color: #3f6a44;
+  text-align: center;
+}
+.pill--mentee { position: relative; }
+.pill--mentee:not(.is-done) { background: #fff6d6; border-style: dashed; }
+.pill__meta { font-size: 15px; font-weight: 500; color: rgba(0, 0, 0, .5); }
+
+.letter--editor { width: 100%; }
+.letter--editor textarea.letter__body {
+  display: block;
+  width: 100%;
+  min-height: min(48dvh, 420px);
+  resize: vertical;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  outline: 0;
+}
+.letter--editor textarea.letter__body:focus { box-shadow: 0 0 0 3px rgba(238, 101, 126, .3); }
+.letter--editor textarea::placeholder { color: rgba(0, 0, 0, .35); }
+.editor__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+}
+.editor__count { font-size: 14px; color: rgba(0, 0, 0, .55); white-space: nowrap; }
+.editor__count.is-over { color: #c43b55; font-weight: 600; }
+.editor__msg { flex: 1; min-width: 0; font-size: 14px; text-align: right; color: #3f6a44; }
+.editor__msg.is-error { color: #c43b55; }
+.pill.editor__save {
+  flex: none;
+  width: auto;
+  min-height: 44px;
+  padding: 6px 22px;
+  font-size: 18px;
+}
+.pill.editor__save:disabled { opacity: .55; cursor: default; transform: none; box-shadow: none; }

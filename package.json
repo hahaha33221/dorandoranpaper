@@ -6,9 +6,13 @@
   "type": "module",
   "scripts": {
     "dev": "node tools/dev.mjs",
-    "build": "node tools/build.mjs"
+    "seed": "node --disable-warning=ExperimentalWarning tools/seed.mjs",
+    "start": "node --disable-warning=ExperimentalWarning server/index.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "exceljs": "^4.4.0"
   }
 }

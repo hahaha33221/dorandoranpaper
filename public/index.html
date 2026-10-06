@@ -24,7 +24,24 @@
     </article>
   </div>
 
-  <script src="data.js"></script>
+  <!-- 편지 쓰기 (멘토) -->
+  <div class="modal" id="editor" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <form class="letter letter--modal letter--editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" novalidate>
+      <button class="modal__close" type="button" aria-label="닫기" data-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+      <h2 class="letter__from" id="editor-title"></h2>
+      <label class="sr-only" for="editor-text">편지 내용</label>
+      <textarea class="letter__body" id="editor-text" placeholder="멘티에게 하고 싶은 말을 적어 주세요."></textarea>
+      <div class="editor__bar">
+        <span class="editor__count" id="editor-count" aria-live="polite"></span>
+        <span class="editor__msg" id="editor-msg" role="status"></span>
+        <button class="pill editor__save" id="editor-save" type="submit">저장</button>
+      </div>
+    </form>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
