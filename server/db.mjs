@@ -35,6 +35,10 @@ export function openDb(file) {
       expires_at INTEGER NOT NULL
     );
   `);
+
+  // 마이그레이션: 비밀번호를 직접 바꿨는지 (1이면 seed.json 이 덮어쓰지 않음)
+  const cols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  if (!cols.includes("pw_changed")) db.exec("ALTER TABLE users ADD COLUMN pw_changed INTEGER NOT NULL DEFAULT 0");
   return db;
 }
 
@@ -55,7 +59,7 @@ export function verifyPassword(password, stored) {
 
 /*
  * seed.json (npm run seed 로 생성) 을 DB에 반영.
- * - 계정은 login 기준으로 추가/갱신 (비밀번호 해시 포함)
+ * - 계정은 login 기준으로 추가/갱신. 비밀번호는 사용자가 직접 바꾸지 않은 경우에만 갱신
  * - 편지는 DB에 아직 없는 것만 추가 → 웹에서 쓴 편지를 덮어쓰지 않음
  * 반영 후 파일은 seed.imported-<시각>.json 으로 이름을 바꿔 다시 적용되지 않게 합니다.
  */
@@ -66,7 +70,8 @@ export function importSeed(db, file) {
     INSERT INTO users (login, pw_hash, role, name, full_name, grade, sort)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(login) DO UPDATE SET
-      pw_hash = excluded.pw_hash, role = excluded.role, name = excluded.name,
+      pw_hash = CASE WHEN users.pw_changed = 1 THEN users.pw_hash ELSE excluded.pw_hash END,
+      role = excluded.role, name = excluded.name,
       full_name = excluded.full_name, grade = excluded.grade, sort = excluded.sort
   `);
   const idOf = db.prepare("SELECT id FROM users WHERE login = ?");

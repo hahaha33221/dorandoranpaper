@@ -11,7 +11,7 @@ import { createServer } from "node:http";
 import { createReadStream, statSync, watch } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import crypto from "node:crypto";
-import { openDb, importSeed, verifyPassword } from "./db.mjs";
+import { openDb, importSeed, verifyPassword, hashPassword } from "./db.mjs";
 
 const PORT = Number(process.env.PORT) || 8787;
 const DATA_DIR = resolve(process.env.DATA_DIR || "data");
@@ -20,6 +20,7 @@ const DEV = process.env.DEV === "1";
 
 const SESSION_HOURS = { mentee: 12, mentor: 24 * 7 };
 const MAX_LETTER = 5000;
+const PASSWORD_MIN = 6, PASSWORD_MAX = 64;
 const SENDER_SUFFIX = " 선생님"; // 보낸 사람 이름 뒤 호칭
 const MAX_BODY = 64 * 1024;
 
@@ -30,11 +31,13 @@ if (seeded) console.log(`seed.json 반영: 계정 ${seeded.users}개, 새 편지
 const q = {
   userByLogin: db.prepare("SELECT * FROM users WHERE login = ?"),
   session: db.prepare(`
-    SELECT u.id, u.role, u.name, u.full_name, u.grade FROM sessions s
+    SELECT u.id, u.role, u.name, u.full_name, u.grade, u.pw_changed, u.pw_hash FROM sessions s
     JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ? AND s.expires_at > ?`),
   addSession: db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)"),
   delSession: db.prepare("DELETE FROM sessions WHERE token_hash = ?"),
+  delOtherSessions: db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?"),
+  setPassword: db.prepare("UPDATE users SET pw_hash = ?, pw_changed = 1 WHERE id = ?"),
   purgeSessions: db.prepare("DELETE FROM sessions WHERE expires_at <= ?"),
   menteeLetters: db.prepare(`
     SELECT m.name AS mentor, l.body FROM letters l
@@ -124,7 +127,9 @@ function auth(req) {
   return q.session.get(sha256(m[1]), Date.now()) || null;
 }
 
-const publicUser = (u) => ({ role: u.role, name: u.name, fullName: u.full_name, grade: u.grade });
+const publicUser = (u) => ({
+  role: u.role, name: u.name, fullName: u.full_name, grade: u.grade, mustChangePassword: !u.pw_changed
+});
 
 /* ---------- API ---------- */
 async function api(req, res, path) {
@@ -158,6 +163,26 @@ async function api(req, res, path) {
   }
 
   if (path === "/api/me" && method === "GET") return send(res, 200, { user: publicUser(user) });
+
+  // 비밀번호 변경 (본인)
+  if (path === "/api/password" && method === "POST") {
+    const { current, next } = await readJson(req);
+    const key = "pw:" + user.id;
+    if (tooMany(key)) return send(res, 429, { error: "시도가 너무 많아요. 10분 뒤에 다시 시도해 주세요." });
+    if (typeof current !== "string" || !verifyPassword(current.trim(), user.pw_hash)) {
+      recordFail(key);
+      return send(res, 400, { error: "지금 비밀번호가 맞지 않아요.", field: "current" });
+    }
+    const pw = typeof next === "string" ? next.trim() : "";
+    if (pw.length < PASSWORD_MIN || pw.length > PASSWORD_MAX) {
+      return send(res, 400, { error: `새 비밀번호는 ${PASSWORD_MIN}자 이상으로 정해 주세요.`, field: "next" });
+    }
+    if (pw === current.trim()) return send(res, 400, { error: "지금 비밀번호와 다른 비밀번호로 정해 주세요.", field: "next" });
+    q.setPassword.run(hashPassword(pw), user.id);
+    const token = String(req.headers.authorization).split(/\s+/)[1];
+    q.delOtherSessions.run(user.id, sha256(token)); // 다른 기기 로그인은 끊기
+    return send(res, 200, { ok: true });
+  }
 
   // 멘티: 받은 편지
   if (path === "/api/letters" && method === "GET") {

@@ -426,3 +426,79 @@ body.is-locked { overflow: hidden; }
   font-size: 18px;
 }
 .pill.editor__save:disabled { opacity: .55; cursor: default; transform: none; box-shadow: none; }
+
+/* ---------- 비밀번호 변경 / 찾기 ---------- */
+.account {
+  position: absolute;
+  top: clamp(14px, 3vw, 22px);
+  right: clamp(14px, 3vw, 22px);
+  z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px;
+  border: 0; border-radius: 50%;
+  background: transparent;
+  color: var(--green);
+  transition: background .15s;
+}
+.account:hover { background: rgba(119, 177, 126, .15); }
+.account svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+.linkish {
+  justify-self: center;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  color: #3f6a44;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.forgot {
+  padding: 16px 18px;
+  background: rgba(255, 255, 255, .7);
+  border: 1px dashed var(--green);
+  border-radius: var(--radius);
+  font-size: 15px;
+  line-height: 1.6;
+  text-align: center;
+  word-break: keep-all;
+}
+.forgot p { margin: 0; }
+.forgot__title { font-weight: 700; margin-bottom: 4px !important; }
+.forgot__contact { margin-top: 8px !important; font-weight: 600; color: #3f6a44; }
+
+.letter--password .pwbox {
+  min-height: 0;
+  display: grid;
+  gap: 14px;
+  padding: 18px 18px 14px;
+  text-align: left;
+  white-space: normal;
+  font-size: 16px;
+  font-weight: 500;
+}
+.pwbox label { display: grid; gap: 6px; }
+.pwbox small { font-weight: 400; color: rgba(0, 0, 0, .5); }
+.pwbox input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  background: #fff;
+  border: 1px solid var(--pink-line);
+  border-radius: 12px;
+  outline: 0;
+  font-size: 18px;
+}
+.pwbox input:focus { box-shadow: 0 0 0 3px rgba(238, 101, 126, .3); }
+.pwbox__note {
+  margin: 0;
+  padding: 10px 12px;
+  background: #fff6d6;
+  border-radius: 10px;
+  font-size: 15px;
+  text-align: center;
+}
+.pwbox__msg { min-height: 1.4em; margin: 0; font-size: 14px; color: #c43b55; text-align: center; }
+.pwbox__msg.is-ok { color: #3f6a44; }
+.letter--password .letter__body { overflow: visible; flex: none; }

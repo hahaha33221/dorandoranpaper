@@ -2,6 +2,8 @@
   "use strict";
 
   const TITLE = "도란도란";
+  // 비밀번호 찾기 안내에 보여줄 관리자 연락처 (비워 두면 연락처 줄은 숨김)
+  const ADMIN_CONTACT = "";
   const API = "/api";
   const app = document.getElementById("app");
   const modal = document.getElementById("modal");
@@ -67,13 +69,18 @@
   }
 
   const ICON_BACK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
+  const ICON_KEY = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l2.5 2.5M14 9l2 2"/></svg>';
   const ICON_LOCK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg>';
   const ICON_USER = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5"/></svg>';
 
   function frame(children) {
     const svg = '<svg class="frame__border" aria-hidden="true"><rect x="1.5" y="1.5" width="100%" height="100%" rx="18" ry="18" style="width:calc(100% - 3px);height:calc(100% - 3px)"/></svg>';
     const back = h("button", { class: "back", type: "button", "aria-label": "나가기", html: ICON_BACK, onclick: logout });
-    const el = h("div", { class: "frame", html: svg }, [back].concat(children));
+    const key = h("button", {
+      class: "account", type: "button", "aria-label": "비밀번호 변경", title: "비밀번호 변경",
+      html: ICON_KEY, onclick: (e) => openPassword(e.currentTarget)
+    });
+    const el = h("div", { class: "frame", html: svg }, [back, key].concat(children));
     return el;
   }
 
@@ -109,6 +116,7 @@
     if (editorDirty() && !confirm("저장하지 않은 편지가 있어요. 나갈까요?")) return;
     try { await request("POST", "/logout"); } catch (e) { /* 이미 만료돼도 무시 */ }
     store.remove(TOKEN_KEY);
+    store.remove(PROMPTED_KEY);
     current = null;
     go("#/");
   }
@@ -122,6 +130,7 @@
   async function render() {
     closeModal();
     closeEditor(true);
+    hideDialog(pwDialog);
     window.removeEventListener("resize", onPuzzleResize);
     const route = location.hash;
     if ((route === "#/letters" || route === "#/write") && !current && store.get(TOKEN_KEY, "")) {
@@ -132,9 +141,11 @@
       if (current && current.user.role === "mentee" && route === "#/letters") {
         const data = await request("GET", "/letters");
         renderLetters({ id: data.name, name: data.name, letters: data.letters });
+        promptPasswordChange();
       } else if (current && current.user.role === "mentor" && route === "#/write") {
         const data = await request("GET", "/mentor/mentees");
         renderMentor(current.user, data.mentees);
+        promptPasswordChange();
       } else if (current) {
         return go(current.user.role === "mentor" ? "#/write" : "#/letters");
       } else {
@@ -175,6 +186,19 @@
     const pwField = h("label", { class: "search", html: ICON_LOCK }, [pwInput]);
     const submit = h("button", { class: "pill", type: "submit", text: "들어가기" });
     const msg = h("p", { class: "lock__msg", id: "login-msg", role: "alert" });
+    const forgotBox = h("div", { class: "forgot", id: "forgot-help", hidden: true }, [
+      h("p", { class: "forgot__title", text: "비밀번호는 관리자에게 문의해 주세요" }),
+      h("p", { text: "이름과 아이디를 알려 주면 새 임시 비밀번호를 받을 수 있어요." }),
+      ADMIN_CONTACT ? h("p", { class: "forgot__contact", text: ADMIN_CONTACT }) : null
+    ]);
+    const forgotBtn = h("button", {
+      class: "linkish", type: "button", text: "비밀번호를 잊어버렸어요",
+      "aria-expanded": "false", "aria-controls": "forgot-help",
+      onclick: () => {
+        forgotBox.hidden = !forgotBox.hidden;
+        forgotBtn.setAttribute("aria-expanded", String(!forgotBox.hidden));
+      }
+    });
 
     idInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !pwInput.value) { e.preventDefault(); pwInput.focus(); }
@@ -203,7 +227,7 @@
           pwInput.value = "";
         }
       }
-    }, [idField, pwField, submit, msg]);
+    }, [idField, pwField, submit, msg, forgotBtn, forgotBox]);
 
     function fail(text, input, shakeEl) {
       msg.textContent = text;
@@ -427,7 +451,7 @@
   function hideDialog(el) {
     if (el.hidden) return;
     el.hidden = true;
-    if (modal.hidden && editor.hidden) document.body.classList.remove("is-locked");
+    if (modal.hidden && editor.hidden && pwDialog.hidden) document.body.classList.remove("is-locked");
     if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
   }
 
@@ -504,16 +528,71 @@
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") editor.querySelector("form").requestSubmit();
   });
 
-  for (const dlg of [modal, editor]) {
+  /* 비밀번호 변경 */
+  const pwDialog = document.getElementById("pwdialog");
+  const pwForm = pwDialog.querySelector("form");
+  const pwNote = document.getElementById("pw-note");
+  const pwMsg = document.getElementById("pw-msg");
+  const pwSave = document.getElementById("pw-save");
+  const pwLater = document.getElementById("pw-later");
+  const PROMPTED_KEY = "doran:pw-prompted";
+
+  function openPassword(trigger, first) {
+    pwForm.reset();
+    pwMsg.textContent = "";
+    pwMsg.classList.remove("is-ok");
+    pwNote.hidden = !first;
+    pwLater.textContent = first ? "나중에 할게요" : "취소";
+    showDialog(pwDialog, trigger, pwForm.elements.current);
+  }
+  function closePassword() { hideDialog(pwDialog); }
+
+  function promptPasswordChange() {
+    if (!current || !current.user.mustChangePassword || store.get(PROMPTED_KEY, "") === "1") return;
+    store.set(PROMPTED_KEY, "1");
+    setTimeout(() => openPassword(null, true), 400);
+  }
+
+  pwForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (pwSave.disabled) return;
+    const f = pwForm.elements;
+    const fail = (text, input) => {
+      pwMsg.textContent = text;
+      pwMsg.classList.remove("is-ok");
+      if (input) { input.focus(); input.select(); }
+    };
+    if (!f.current.value.trim()) return fail("지금 비밀번호를 입력해 주세요.", f.current);
+    if (f.next.value.trim().length < 6) return fail("새 비밀번호는 6자 이상으로 정해 주세요.", f.next);
+    if (f.next.value.trim() !== f.confirm.value.trim()) return fail("새 비밀번호가 서로 달라요. 다시 입력해 주세요.", f.confirm);
+    pwSave.disabled = true;
+    pwSave.textContent = "바꾸는 중…";
+    try {
+      await request("POST", "/password", { current: f.current.value, next: f.next.value });
+      current.user.mustChangePassword = false;
+      pwMsg.textContent = "비밀번호를 바꿨어요. 다음부터 새 비밀번호로 로그인하세요.";
+      pwMsg.classList.add("is-ok");
+      pwForm.reset();
+      setTimeout(closePassword, 1600);
+    } catch (err) {
+      if (err.status === 401) { closePassword(); return go("#/"); }
+      fail(err.message, f[(err.field === "next" ? "next" : "current")]);
+    } finally {
+      pwSave.disabled = false;
+      pwSave.textContent = "바꾸기";
+    }
+  });
+
+  for (const dlg of [modal, editor, pwDialog]) {
     dlg.addEventListener("click", (e) => {
       if (!e.target.closest("[data-close]")) return;
-      if (dlg === editor) closeEditor(); else closeModal();
+      if (dlg === editor) closeEditor(); else if (dlg === pwDialog) closePassword(); else closeModal();
     });
   }
   document.addEventListener("keydown", (e) => {
-    const dlg = !editor.hidden ? editor : !modal.hidden ? modal : null;
+    const dlg = !pwDialog.hidden ? pwDialog : !editor.hidden ? editor : !modal.hidden ? modal : null;
     if (!dlg) return;
-    if (e.key === "Escape") { dlg === editor ? closeEditor() : closeModal(); return; }
+    if (e.key === "Escape") { dlg === editor ? closeEditor() : dlg === pwDialog ? closePassword() : closeModal(); return; }
     if (e.key === "Tab") {
       const items = [...dlg.querySelectorAll("button:not([disabled]), textarea, input, [tabindex]:not([tabindex='-1'])")]
         .filter((el) => el.offsetParent !== null);

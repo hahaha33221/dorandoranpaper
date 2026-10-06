@@ -35,6 +35,30 @@ npm run seed
   비밀번호를 바꾸려면 `private/accounts.json` 의 값을 고친 뒤 다시 `npm run seed` 하세요.
 - 멘티 아이디는 6자리, 멘토 아이디는 `t`로 시작하는 6자리, 비밀번호는 숫자 6자리입니다.
 
+## 비밀번호
+
+- 처음 나눠 준 비밀번호로 로그인하면 **비밀번호 변경** 안내가 뜹니다. (나중에 하기 가능)
+- 로그인 후 화면 오른쪽 위 🔑 버튼으로 언제든 바꿀 수 있습니다. (6자 이상)
+- 직접 바꾼 비밀번호는 `seed.json` 을 다시 올려도 덮어쓰지 않습니다.
+- 로그인 화면의 **비밀번호를 잊어버렸어요** → 관리자에게 문의하라는 안내가 나옵니다.
+  연락처를 함께 보여 주려면 `public/app.js` 의 `ADMIN_CONTACT` 에 적으세요.
+
+### 비밀번호 찾기 문의 처리 (관리자)
+
+```bash
+# 이름으로 아이디 찾기
+ssh root@srv1809055.hstgr.cloud 'cd /opt/dorandoran && docker compose exec -T api node --disable-warning=ExperimentalWarning server/admin.mjs find 박지은'
+
+# 임시 비밀번호 새로 발급 (6자리 숫자, 기존 로그인은 모두 끊김)
+ssh root@srv1809055.hstgr.cloud 'cd /opt/dorandoran && docker compose exec -T api node --disable-warning=ExperimentalWarning server/admin.mjs reset-password <아이디>'
+
+# 전체 계정과 비밀번호 변경 여부
+ssh root@srv1809055.hstgr.cloud 'cd /opt/dorandoran && docker compose exec -T api node --disable-warning=ExperimentalWarning server/admin.mjs list'
+```
+
+발급된 임시 비밀번호를 본인에게 알려 주면, 로그인할 때 다시 바꾸라는 안내가 나옵니다.
+(`private/계정목록.xlsx` 에는 처음 비밀번호만 적혀 있으니 바뀐 비밀번호는 따로 관리하세요.)
+
 ## 로컬 개발
 
 ```bash
