@@ -502,3 +502,4 @@ body.is-locked { overflow: hidden; }
 .pwbox__msg { min-height: 1.4em; margin: 0; font-size: 14px; color: #c43b55; text-align: center; }
 .pwbox__msg.is-ok { color: #3f6a44; }
 .letter--password .letter__body { overflow: visible; flex: none; }
+.forgot__contact a { color: inherit; text-underline-offset: 3px; word-break: break-all; }

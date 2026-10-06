@@ -2,8 +2,8 @@
   "use strict";
 
   const TITLE = "도란도란";
-  // 비밀번호 찾기 안내에 보여줄 관리자 연락처 (비워 두면 연락처 줄은 숨김)
-  const ADMIN_CONTACT = "";
+  // 비밀번호 찾기 안내에 보여줄 관리자 이메일 (비워 두면 연락처 줄은 숨김)
+  const ADMIN_EMAIL = "hand090399@gmail.com";
   const API = "/api";
   const app = document.getElementById("app");
   const modal = document.getElementById("modal");
@@ -189,7 +189,14 @@
     const forgotBox = h("div", { class: "forgot", id: "forgot-help", hidden: true }, [
       h("p", { class: "forgot__title", text: "비밀번호는 관리자에게 문의해 주세요" }),
       h("p", { text: "이름과 아이디를 알려 주면 새 임시 비밀번호를 받을 수 있어요." }),
-      ADMIN_CONTACT ? h("p", { class: "forgot__contact", text: ADMIN_CONTACT }) : null
+      ADMIN_EMAIL ? h("p", { class: "forgot__contact" }, [
+        "📧 ",
+        h("a", {
+          href: "mailto:" + ADMIN_EMAIL + "?subject=" + encodeURIComponent("[도란도란] 비밀번호 문의") +
+            "&body=" + encodeURIComponent("이름:\n아이디:\n"),
+          text: ADMIN_EMAIL
+        })
+      ]) : null
     ]);
     const forgotBtn = h("button", {
       class: "linkish", type: "button", text: "비밀번호를 잊어버렸어요",
