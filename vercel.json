@@ -5,7 +5,7 @@
   "buildCommand": "",
   "outputDirectory": "public",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://VPS_API_DOMAIN/dorandoran-api/:path*" }
+    { "source": "/api/:path*", "destination": "https://dorandoran.31-97-71-87.sslip.io/api/:path*" }
   ],
   "headers": [
     {

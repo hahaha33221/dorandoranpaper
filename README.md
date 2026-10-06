@@ -7,9 +7,9 @@
 
 ```
 브라우저 ── https://dorandoranpaper.vercel.app ── (Vercel: public/ 정적 파일)
-                     │  /api/*  → https://<VPS>/dorandoran-api/*  (vercel.json rewrite)
+                     │  /api/*  → https://dorandoran.31-97-71-87.sslip.io/api/*  (vercel.json rewrite)
                      ▼
-            Hostinger VPS ── 기존 웹서버 /dorandoran-api/ ── 127.0.0.1:18787 Node API(server/) ── SQLite
+            Hostinger VPS ── 호스트 nginx(전용 사이트, HTTPS) ── 127.0.0.1:18787 Node API(server/) ── SQLite
 ```
 
 | 경로 | 설명 | 커밋 |
@@ -51,39 +51,39 @@ npm run dev
 | 폴더 | `/opt/dorandoran` |
 | 컨테이너 / 네트워크 | `dorandoran-api` (`dorandoran-caddy`) / `dorandoran` |
 | 포트 | `127.0.0.1:18787` — 외부 공개 안 함, 80/443 사용 안 함 |
-| 공개 경로 | 기존 도메인의 `https://<호스트>/dorandoran-api/*` 경로 하나만 사용 |
+| 공개 주소 | 전용 주소 `dorandoran.31-97-71-87.sslip.io` (nginx 사이트 `/etc/nginx/sites-available/dorandoran`) |
 | 자원 제한 | 메모리 256MB, CPU 0.5, 로그 최대 30MB |
 
 1. **점검** (아무것도 바꾸지 않음) — 80/443을 누가 쓰는지, 18787 포트가 비었는지 확인
 
    ```bash
-   ssh root@<호스트> 'bash -s' < deploy/setup-vps.sh <호스트> --check
+   ssh root@srv1809055.hstgr.cloud 'bash -s' < deploy/setup-vps.sh dorandoran.31-97-71-87.sslip.io --check
    ```
 
 2. **설치**
 
    ```bash
-   # 기존 nginx가 있으면 경로 연결까지 자동 (설정 검사 실패 시 원래대로 되돌림)
-   ssh root@<호스트> 'bash -s' < deploy/setup-vps.sh <호스트> --nginx
+   # 호스트 nginx 에 전용 사이트 생성 + certbot HTTPS (설정 검사 실패 시 이 사이트만 비활성화)
+   ssh root@srv1809055.hstgr.cloud 'bash -s' < deploy/setup-vps.sh dorandoran.31-97-71-87.sslip.io --nginx
    ```
-   - 80/443을 이미 다른 서비스가 쓰면 **proxy 모드**: API만 띄우고, 기존 웹서버에 `/dorandoran-api/` 경로를 추가합니다.
-     nginx가 아니면(Caddy, Traefik 등) 스크립트가 넣을 설정을 안내해 줍니다.
+   - 80/443을 이미 다른 서비스가 쓰면 **proxy 모드**: API는 127.0.0.1 에만 띄우고, nginx 에 이 주소 전용 사이트만 추가합니다.
+     다른 사이트 설정 파일은 건드리지 않습니다.
    - 80/443이 비어 있으면 **standalone 모드**: 전용 Caddy가 HTTPS 인증서까지 처리합니다.
    - 18787이 이미 쓰이면 `--port 18800` 처럼 다른 포트를 지정하세요.
 
-3. **확인**: `curl https://<호스트>/dorandoran-api/health` → `{"ok":true}`
+3. **확인**: `curl https://dorandoran.31-97-71-87.sslip.io/api/health` → `{"ok":true}`
 
 4. **계정 데이터 올리기** (계정을 새로 만들거나 바꿀 때마다)
 
    ```bash
-   scp private/seed.json root@<호스트>:/opt/dorandoran/data/seed.json
-   ssh root@<호스트> 'cd /opt/dorandoran && chown 1000:1000 data/seed.json && docker compose restart api'
+   scp private/seed.json root@srv1809055.hstgr.cloud:/opt/dorandoran/data/seed.json
+   ssh root@srv1809055.hstgr.cloud 'cd /opt/dorandoran && chown 1000:1000 data/seed.json && docker compose restart api'
    ```
    서버가 시작할 때 `seed.json` 을 반영하고 이름을 `seed.imported-*.json` 으로 바꿉니다.
    웹에서 멘토가 쓴 편지는 덮어쓰지 않습니다.
 
-5. **Vercel 연결** — `vercel.json` 의 `VPS_API_DOMAIN` 을 실제 호스트로 바꿔 커밋합니다.
-   (`/api/*` → `https://<호스트>/dorandoran-api/*`)
+5. **Vercel 연결** — `vercel.json` 의 rewrite 대상이 위 호스트인지 확인합니다.
+   (`/api/*` → `https://dorandoran.31-97-71-87.sslip.io/api/*`)
 
 6. **자동 배포(CI/CD) 시크릿** — GitHub 저장소 → Settings → Secrets and variables → Actions
 
@@ -100,7 +100,7 @@ npm run dev
 
 ```bash
 cd /opt/dorandoran && docker compose down   # DB(data/)는 남음
-# nginx 를 연결했다면 include ... nginx-dorandoran.local.conf; 줄을 지우고 reload
+rm /etc/nginx/sites-enabled/dorandoran && nginx -t && systemctl reload nginx
 ```
 
 ## 자동 배포 (CI/CD)
@@ -117,5 +117,5 @@ cd /opt/dorandoran && docker compose down   # DB(data/)는 남음
 DB는 VPS의 `/opt/dorandoran/data/doran.db` 한 파일입니다.
 
 ```bash
-scp root@srv123456.hstgr.cloud:/opt/dorandoran/data/doran.db ./backup-$(date +%Y%m%d).db
+scp root@srv1809055.hstgr.cloud:/opt/dorandoran/data/doran.db ./backup-$(date +%Y%m%d).db
 ```
