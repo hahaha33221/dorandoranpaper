@@ -30,9 +30,10 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; }
 body {
   margin: 0;
+  min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg);
   color: var(--ink);
@@ -49,15 +50,22 @@ button { cursor: pointer; }
 
 /* ---------- 레이아웃 ---------- */
 .page {
+  min-height: 100vh;
   min-height: 100dvh;
-  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  padding:
+    max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+  overflow-x: clip; /* 퍼즐 조각이 날아올 때 가로 스크롤이 생기지 않게 */
   display: flex;
   animation: fade-in .35s ease both;
 }
 .page--home {
   flex-direction: column;
   align-items: center;
-  padding-inline: var(--gutter);
+  padding-left: max(var(--gutter), env(safe-area-inset-left));
+  padding-right: max(var(--gutter), env(safe-area-inset-right));
   padding-block: clamp(80px, 14vh, 140px) 64px;
 }
 
@@ -311,12 +319,19 @@ button.piece:hover, button.piece:focus-visible {
 .modal {
   position: fixed; inset: 0;
   z-index: 50;
-  display: grid; place-items: center;
-  padding: 20px 28px;
+  display: grid;
+  place-items: safe center;
+  padding:
+    max(20px, env(safe-area-inset-top))
+    max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-left));
+  overflow-y: auto; /* 창이 화면보다 길면(가로 모드 등) 스크롤 */
+  overscroll-behavior: contain;
 }
 .modal[hidden] { display: none; }
 .modal__backdrop {
-  position: absolute; inset: 0;
+  position: fixed; inset: 0;
   background: rgba(40, 40, 0, .18);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
@@ -502,4 +517,5 @@ body.is-locked { overflow: hidden; }
 .pwbox__msg { min-height: 1.4em; margin: 0; font-size: 14px; color: #c43b55; text-align: center; }
 .pwbox__msg.is-ok { color: #3f6a44; }
 .letter--password .letter__body { overflow: visible; flex: none; }
+.letter--password { max-height: none; }
 .forgot__contact a { color: inherit; text-underline-offset: 3px; word-break: break-all; }
