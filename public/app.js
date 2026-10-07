@@ -376,7 +376,7 @@
 
   function puzzleLayout(width) {
     const cols = width < 420 ? 3 : width < 760 ? 4 : 5;
-    const cell = Math.max(78, Math.min(140, Math.floor((width - 16) / (cols + 0.3))));
+    const cell = Math.max(56, Math.min(140, Math.floor((width - 8) / (cols + 0.3))));
     return { cols, cell };
   }
 

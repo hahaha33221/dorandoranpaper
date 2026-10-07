@@ -66,7 +66,8 @@ button { cursor: pointer; }
   align-items: center;
   padding-left: max(var(--gutter), env(safe-area-inset-left));
   padding-right: max(var(--gutter), env(safe-area-inset-right));
-  padding-block: clamp(80px, 14vh, 140px) 64px;
+  padding-top: max(clamp(24px, 12vh, 140px), env(safe-area-inset-top));
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
 }
 
 /* 점선 프레임 */
@@ -119,17 +120,17 @@ button { cursor: pointer; }
   line-height: 1.1;
   text-align: center;
 }
-.title--brand { color: var(--green); font-size: clamp(56px, 15vw, 88px); }
+.title--brand { color: var(--green); font-size: clamp(40px, min(15vw, 14vh), 88px); }
 .title--name  { color: var(--blue);  font-size: clamp(52px, 14vw, 80px); }
 
 /* ---------- 홈: 검색 + 이름 목록 ---------- */
-.home__inner { width: 100%; max-width: 560px; }
-.home__inner .title { margin-bottom: clamp(64px, 10vh, 96px); }
+.home__inner { width: 100%; max-width: 560px; min-width: 0; }
+.home__inner .title { margin-bottom: clamp(24px, 9vh, 96px); }
 
 .search {
   position: relative;
   display: flex; align-items: center;
-  height: var(--row-h);
+  min-height: var(--row-h); /* 글자 크기를 키운 휴대폰에서도 잘리지 않게 높이는 늘어날 수 있음 */
   padding-inline: 16px;
   background: #fff;
   border: 1px solid var(--field-line);
@@ -139,7 +140,10 @@ button { cursor: pointer; }
 .search:focus-within { border-color: var(--green); box-shadow: 0 0 0 3px rgba(119, 177, 126, .25); }
 .search svg { flex: none; width: 26px; height: 26px; fill: none; stroke: var(--muted); stroke-width: 2.6; stroke-linecap: round; }
 .search input {
-  flex: 1; min-width: 0; height: 100%;
+  flex: 1 1 0; width: 0; min-width: 0; /* 입력칸 기본 최소폭(약 20자) 때문에 좁은 화면에서 넘치지 않게 */
+  align-self: stretch;
+  min-height: 44px;
+  line-height: 1.3;
   padding: 0 8px 0 12px;
   border: 0; outline: 0; background: transparent;
   font-size: 20px;
@@ -221,6 +225,7 @@ button { cursor: pointer; }
 /* 보기 방식 전환 */
 .views {
   display: inline-flex;
+  max-width: 100%;
   gap: 4px;
   margin-bottom: clamp(28px, 5vw, 44px);
   padding: 4px;
@@ -229,7 +234,10 @@ button { cursor: pointer; }
   border-radius: 999px;
 }
 .views button {
-  padding: 8px 16px;
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  padding: 8px clamp(10px, 3vw, 16px);
   border: 0; border-radius: 999px;
   background: transparent;
   font-size: 15px; font-weight: 600;
@@ -391,7 +399,7 @@ body.is-locked { overflow: hidden; }
 }
 
 /* ---------- 아이디 로그인 ---------- */
-.login { display: grid; gap: 22px; margin: 0; }
+.login { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; margin: 0; }
 .login input { letter-spacing: .04em; }
 .login input::placeholder { color: var(--muted); letter-spacing: 0; }
 .login .pill:disabled { opacity: .7; cursor: progress; transform: none; box-shadow: none; }
@@ -519,3 +527,36 @@ body.is-locked { overflow: hidden; }
 .letter--password .letter__body { overflow: visible; flex: none; }
 .letter--password { max-height: none; }
 .forgot__contact a { color: inherit; text-underline-offset: 3px; word-break: break-all; }
+
+/* ---------- 아주 좁은 화면 (폴드 바깥 화면 등 320px 미만) ---------- */
+@media (max-width: 340px) {
+  :root { --row-h: 52px; }
+  .search { padding-inline: 12px; }
+  .search svg { width: 22px; height: 22px; }
+  .search input { font-size: 18px; padding-left: 8px; }
+  .pill { font-size: 21px; padding-inline: 12px; }
+  .views button { font-size: 14px; padding-inline: 9px; }
+  .frame { padding-inline: 14px; }
+}
+
+/* ---------- 세로가 짧은 화면 (휴대폰 가로 모드) ---------- */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root { --row-h: 48px; }
+  .login { gap: 10px; }
+  .frame { padding-top: 28px; }
+  .title--name { font-size: clamp(40px, 12vh, 64px); }
+  .search input { font-size: 18px; }
+  .pill { font-size: 20px; }
+
+  /* 로그인: 제목은 왼쪽, 입력칸은 오른쪽 */
+  .page--home { justify-content: center; padding-top: max(16px, env(safe-area-inset-top)); padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .home__inner {
+    max-width: 820px;
+    display: grid;
+    grid-template-columns: minmax(0, .8fr) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(20px, 5vw, 56px);
+  }
+  .home__inner .title { margin: 0; font-size: clamp(40px, min(9vw, 20vh), 80px); }
+  .home__inner .lock__msg { min-height: 0; }
+}
