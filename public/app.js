@@ -122,6 +122,10 @@
   }
 
   /* ---------- 라우팅 ---------- */
+  function homeRoute(role) {
+    return role === "admin" ? "#/admin" : role === "mentor" ? "#/write" : "#/letters";
+  }
+
   function go(hash) {
     if (location.hash === hash) render();
     else location.hash = hash;
@@ -133,7 +137,7 @@
     hideDialog(pwDialog);
     window.removeEventListener("resize", onPuzzleResize);
     const route = location.hash;
-    if ((route === "#/letters" || route === "#/write") && !current && store.get(TOKEN_KEY, "")) {
+    if ((route === "#/letters" || route === "#/write" || route === "#/admin") && !current && store.get(TOKEN_KEY, "")) {
       try { current = { user: (await request("GET", "/me")).user }; } catch (e) { current = null; }
     }
     app.replaceChildren();
@@ -142,12 +146,15 @@
         const data = await request("GET", "/letters");
         renderLetters({ id: data.name, name: data.name, letters: data.letters });
         promptPasswordChange();
+      } else if (current && current.user.role === "admin" && route === "#/admin") {
+        renderAdmin(await request("GET", "/admin/overview"));
+        promptPasswordChange();
       } else if (current && current.user.role === "mentor" && route === "#/write") {
         const data = await request("GET", "/mentor/mentees");
         renderMentor(current.user, data.mentees);
         promptPasswordChange();
       } else if (current) {
-        return go(current.user.role === "mentor" ? "#/write" : "#/letters");
+        return go(homeRoute(current.user.role));
       } else {
         if (route) history.replaceState(null, "", location.pathname + location.search);
         renderHome();
@@ -226,7 +233,7 @@
           const data = await request("POST", "/login", { login: idInput.value, password: pwInput.value });
           store.set(TOKEN_KEY, data.token);
           current = { user: data.user };
-          go(data.user.role === "mentor" ? "#/write" : "#/letters");
+          go(homeRoute(data.user.role));
         } catch (err) {
           submit.disabled = false;
           submit.textContent = "들어가기";
@@ -250,6 +257,188 @@
       ])
     );
     setTimeout(() => idInput.focus({ preventScroll: true }), 50);
+  }
+
+  /* ---------- 관리자: 전체 현황 ---------- */
+  const ADMIN_TAB_KEY = "doran:admin-tab";
+
+  function parseTime(s) {
+    return s ? new Date(s.replace(" ", "T") + "Z") : null; // 서버 시각은 UTC
+  }
+  function ago(s) {
+    const d = parseTime(s);
+    if (!d) return "";
+    const m = Math.round((Date.now() - d) / 60000);
+    if (m < 1) return "방금";
+    if (m < 60) return m + "분 전";
+    if (m < 60 * 24) return Math.round(m / 60) + "시간 전";
+    if (m < 60 * 24 * 7) return Math.round(m / 1440) + "일 전";
+    return d.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+  }
+  function exact(s) {
+    const d = parseTime(s);
+    return d ? d.toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+  }
+
+  function renderAdmin(data) {
+    document.title = "전체 현황 · " + TITLE;
+    const { mentors, mentees, letters } = data;
+    const wrote = new Map(letters.map((l) => [l.mentorId + ":" + l.menteeId, l]));
+    const total = mentors.length * mentees.length;
+    const pct = (n, d) => (d ? Math.round((n / d) * 100) : 0);
+
+    const everyone = mentors.concat(mentees);
+    const tiles = [
+      { label: "작성된 편지", value: letters.length, of: total, note: `${pct(letters.length, total)}% 완료` },
+      { label: "편지를 쓴 멘토", value: mentors.filter((m) => m.written > 0).length, of: mentors.length, note: `다 쓴 멘토 ${mentors.filter((m) => m.written >= mentees.length && mentees.length).length}명` },
+      { label: "편지를 받은 멘티", value: mentees.filter((m) => m.received > 0).length, of: mentees.length, note: `다 받은 멘티 ${mentees.filter((m) => m.received >= mentors.length && mentors.length).length}명` },
+      { label: "로그인한 사람", value: everyone.filter((u) => u.lastLoginAt).length, of: everyone.length, note: `비밀번호 바꾼 사람 ${everyone.filter((u) => u.pwChanged).length}명` }
+    ];
+
+    const stats = h("section", { class: "admin__stats", "aria-label": "요약" },
+      tiles.map((t) => h("div", { class: "stat" }, [
+        h("p", { class: "stat__label", text: t.label }),
+        h("p", { class: "stat__value" }, [String(t.value), h("small", { text: " / " + t.of })]),
+        meter(t.value, t.of),
+        h("p", { class: "stat__note", text: t.note })
+      ]))
+    );
+
+    function meter(n, d) {
+      return h("div", {
+        class: "meter", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(d), "aria-valuenow": String(n),
+        "aria-label": `${n} / ${d}`
+      }, h("span", { style: `width:${pct(n, d)}%` }));
+    }
+
+    function personCard(u) {
+      const isMentor = u.role === "mentor";
+      const n = isMentor ? u.written : u.received;
+      const d = isMentor ? mentees.length : mentors.length;
+      const done = d && n >= d;
+      return h("li", { class: "person" + (done ? " is-done" : "") }, [
+        h("div", { class: "person__head" }, [
+          h("p", { class: "person__name" }, [
+            u.fullName,
+            u.grade ? h("small", { text: " " + u.grade }) : null
+          ]),
+          h("code", { class: "person__login", text: u.login })
+        ]),
+        h("div", { class: "person__progress" }, [
+          meter(n, d),
+          h("span", { class: "person__count", text: `${isMentor ? "작성" : "받음"} ${n}/${d}` + (done ? " ✓" : "") })
+        ]),
+        h("ul", { class: "person__meta" }, [
+          h("li", { text: u.lastLoginAt ? `로그인 ${ago(u.lastLoginAt)}` : "아직 로그인 안 함", title: exact(u.lastLoginAt) }),
+          isMentor && u.lastWrittenAt ? h("li", { text: `마지막 작성 ${ago(u.lastWrittenAt)}`, title: exact(u.lastWrittenAt) }) : null,
+          h("li", { class: u.pwChanged ? "" : "is-muted", text: u.pwChanged ? "비밀번호 바꿈" : u.tempIssued ? "임시 비밀번호 발급됨" : "초기 비밀번호" })
+        ]),
+        h("button", {
+          class: "linkish person__reset", type: "button", text: "임시 비밀번호 발급",
+          onclick: (e) => resetUserPassword(u, e.currentTarget)
+        })
+      ]);
+    }
+
+    function matrix() {
+      const wrap = h("div", { class: "matrix", tabindex: "0", role: "region", "aria-label": "멘토별·멘티별 작성 현황 표 (가로로 스크롤)" });
+      const table = h("table");
+      table.append(h("caption", { class: "sr-only", text: "행은 멘티, 열은 멘토입니다. ✓ 를 누르면 편지를 볼 수 있어요." }));
+      table.append(h("thead", null, h("tr", null, [
+        h("th", { scope: "col", text: "멘티 \\ 멘토" }),
+        ...mentors.map((m) => h("th", { scope: "col", text: m.name })),
+        h("th", { scope: "col", text: "받음" })
+      ])));
+      const tbody = h("tbody");
+      for (const e of mentees) {
+        tbody.append(h("tr", null, [
+          h("th", { scope: "row", text: e.name }),
+          ...mentors.map((m) => {
+            const l = wrote.get(m.id + ":" + e.id);
+            return h("td", null, l
+              ? h("button", {
+                  class: "cell is-done", type: "button", text: "✓",
+                  "aria-label": `${m.name} → ${e.name} 편지 보기`, title: `${m.name} → ${e.name} · ${exact(l.updatedAt)}`,
+                  onclick: (ev) => showAdminLetter(m, e, ev.currentTarget)
+                })
+              : h("span", { class: "cell", text: "·", "aria-label": "아직 안 씀", title: `${m.name} → ${e.name} 아직 안 씀` }));
+          }),
+          h("td", { class: "matrix__sum", text: `${e.received}/${mentors.length}` })
+        ]));
+      }
+      tbody.append(h("tr", { class: "matrix__foot" }, [
+        h("th", { scope: "row", text: "작성" }),
+        ...mentors.map((m) => h("td", { class: "matrix__sum", text: `${m.written}/${mentees.length}` })),
+        h("td", { class: "matrix__sum", text: `${letters.length}/${total}` })
+      ]));
+      table.append(tbody);
+      wrap.append(table);
+      return wrap;
+    }
+
+    const VIEWS = [
+      { id: "mentors", label: "멘토별", draw: () => h("ul", { class: "people" }, mentors.map(personCard)) },
+      { id: "mentees", label: "멘티별", draw: () => h("ul", { class: "people" }, mentees.map(personCard)) },
+      { id: "matrix", label: "전체 표", draw: matrix }
+    ];
+    let view = store.get(ADMIN_TAB_KEY, "mentors");
+    if (!VIEWS.some((v) => v.id === view)) view = "mentors";
+    const body = h("div", { class: "admin__view" });
+    const tabs = h("div", { class: "views", role: "group", "aria-label": "보기 방식" });
+    function setView(id) {
+      view = id;
+      store.set(ADMIN_TAB_KEY, id);
+      for (const b of tabs.children) b.setAttribute("aria-pressed", String(b.dataset.view === id));
+      body.replaceChildren(VIEWS.find((v) => v.id === id).draw());
+    }
+    for (const v of VIEWS) tabs.append(h("button", { type: "button", "data-view": v.id, text: v.label, onclick: () => setView(v.id) }));
+
+    const refresh = h("button", { class: "linkish", type: "button", text: "새로고침", onclick: render });
+    const updated = h("p", { class: "admin__updated" }, [
+      `${new Date().toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" })} 기준 · `, refresh
+    ]);
+
+    app.append(
+      h("section", { class: "page" }, [
+        frame([
+          h("div", { class: "letters admin" }, [
+            h("h1", { class: "title title--name", text: "전체 현황" }),
+            updated,
+            stats,
+            tabs,
+            body
+          ])
+        ])
+      ])
+    );
+    setView(view);
+  }
+
+  async function showAdminLetter(mentor, mentee, trigger) {
+    try {
+      const l = await request("GET", `/admin/letters/${mentor.id}/${mentee.id}`);
+      openModal({ from: `${l.from} → ${l.to}`, body: l.body }, trigger);
+    } catch (e) {
+      if (e.status === 401) return go("#/");
+      alert(e.message);
+    }
+  }
+
+  async function resetUserPassword(u, trigger) {
+    if (!confirm(`${u.fullName}(${u.login})의 임시 비밀번호를 새로 발급할까요?\n지금 비밀번호는 더 이상 쓸 수 없고, 로그인돼 있던 기기는 로그아웃돼요.`)) return;
+    try {
+      const r = await request("POST", `/admin/users/${u.id}/reset-password`);
+      u.pwChanged = false;
+      u.tempIssued = true;
+      document.querySelector('.views [aria-pressed="true"]')?.click(); // 카드 상태 다시 그리기
+      openModal({
+        from: "임시 비밀번호 발급",
+        body: `${r.name} · 아이디 ${r.login}\n\n임시 비밀번호\n${r.password}\n\n이 창을 닫으면 다시 볼 수 없어요.\n본인에게 알려 주면, 로그인할 때 새 비밀번호로 바꾸라는 안내가 나와요.`
+      }, trigger);
+    } catch (e) {
+      if (e.status === 401) return go("#/");
+      alert(e.message);
+    }
   }
 
   /* ---------- 2. 멘토: 편지 쓰기 ---------- */

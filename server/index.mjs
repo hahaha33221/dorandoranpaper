@@ -18,7 +18,7 @@ const DATA_DIR = resolve(process.env.DATA_DIR || "data");
 const STATIC_DIR = process.env.STATIC_DIR ? resolve(process.env.STATIC_DIR) : null;
 const DEV = process.env.DEV === "1";
 
-const SESSION_HOURS = { mentee: 12, mentor: 24 * 7 };
+const SESSION_HOURS = { mentee: 12, mentor: 24 * 7, admin: 12 };
 const MAX_LETTER = 5000;
 const PASSWORD_MIN = 6, PASSWORD_MAX = 64;
 const SENDER_SUFFIX = " 선생님"; // 보낸 사람 이름 뒤 호칭
@@ -38,6 +38,22 @@ const q = {
   delSession: db.prepare("DELETE FROM sessions WHERE token_hash = ?"),
   delOtherSessions: db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?"),
   setPassword: db.prepare("UPDATE users SET pw_hash = ?, pw_changed = 1 WHERE id = ?"),
+  touchLogin: db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?"),
+  // 관리자
+  adminUsers: db.prepare(`
+    SELECT u.id, u.login, u.role, u.name, u.full_name, u.grade, u.pw_changed, u.last_login_at,
+      (SELECT count(*) FROM letters l WHERE l.mentor_id = u.id) AS written,
+      (SELECT count(*) FROM letters l WHERE l.mentee_id = u.id) AS received,
+      (SELECT max(updated_at) FROM letters l WHERE l.mentor_id = u.id) AS last_written_at
+    FROM users u WHERE u.role IN ('mentor', 'mentee') ORDER BY u.role, u.sort, u.id`),
+  adminLetters: db.prepare("SELECT mentor_id, mentee_id, updated_at, length(body) AS len FROM letters"),
+  adminLetter: db.prepare(`
+    SELECT l.body, l.updated_at, m.name AS mentor, e.full_name AS mentee FROM letters l
+    JOIN users m ON m.id = l.mentor_id JOIN users e ON e.id = l.mentee_id
+    WHERE l.mentor_id = ? AND l.mentee_id = ?`),
+  userById: db.prepare("SELECT * FROM users WHERE id = ?"),
+  resetPassword: db.prepare("UPDATE users SET pw_hash = ?, pw_changed = 2 WHERE id = ?"), // 2 = 관리자 발급
+  delUserSessions: db.prepare("DELETE FROM sessions WHERE user_id = ?"),
   purgeSessions: db.prepare("DELETE FROM sessions WHERE expires_at <= ?"),
   menteeLetters: db.prepare(`
     SELECT m.name AS mentor, l.body FROM letters l
@@ -128,7 +144,7 @@ function auth(req) {
 }
 
 const publicUser = (u) => ({
-  role: u.role, name: u.name, fullName: u.full_name, grade: u.grade, mustChangePassword: !u.pw_changed
+  role: u.role, name: u.name, fullName: u.full_name, grade: u.grade, mustChangePassword: u.pw_changed !== 1
 });
 
 /* ---------- API ---------- */
@@ -150,6 +166,7 @@ async function api(req, res, path) {
     }
     const token = crypto.randomBytes(32).toString("base64url");
     q.addSession.run(sha256(token), user.id, Date.now() + SESSION_HOURS[user.role] * 3600 * 1000);
+    q.touchLogin.run(user.id);
     return send(res, 200, { token, user: publicUser(user) });
   }
 
@@ -182,6 +199,47 @@ async function api(req, res, path) {
     const token = String(req.headers.authorization).split(/\s+/)[1];
     q.delOtherSessions.run(user.id, sha256(token)); // 다른 기기 로그인은 끊기
     return send(res, 200, { ok: true });
+  }
+
+  /* ----- 관리자 ----- */
+  if (path.startsWith("/api/admin/")) {
+    if (user.role !== "admin") return send(res, 403, { error: "관리자만 볼 수 있어요." });
+
+    if (path === "/api/admin/overview" && method === "GET") {
+      const users = q.adminUsers.all().map((u) => ({
+        id: u.id, login: u.login, role: u.role, name: u.name, fullName: u.full_name, grade: u.grade,
+        pwChanged: u.pw_changed === 1, tempIssued: u.pw_changed === 2, lastLoginAt: u.last_login_at,
+        written: u.written, received: u.received, lastWrittenAt: u.last_written_at
+      }));
+      const letters = q.adminLetters.all().map((l) => ({
+        mentorId: l.mentor_id, menteeId: l.mentee_id, updatedAt: l.updated_at, length: l.len
+      }));
+      return send(res, 200, {
+        mentors: users.filter((u) => u.role === "mentor"),
+        mentees: users.filter((u) => u.role === "mentee"),
+        letters
+      });
+    }
+
+    const lm = path.match(/^\/api\/admin\/letters\/(\d+)\/(\d+)$/);
+    if (lm && method === "GET") {
+      const l = q.adminLetter.get(Number(lm[1]), Number(lm[2]));
+      if (!l) return send(res, 404, { error: "편지가 없어요." });
+      return send(res, 200, { from: l.mentor + SENDER_SUFFIX, to: l.mentee, body: l.body, updatedAt: l.updated_at });
+    }
+
+    const rm = path.match(/^\/api\/admin\/users\/(\d+)\/reset-password$/);
+    if (rm && method === "POST") {
+      const target = q.userById.get(Number(rm[1]));
+      if (!target || target.role === "admin") return send(res, 404, { error: "계정을 찾을 수 없어요." });
+      const temp = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+      q.resetPassword.run(hashPassword(temp), target.id);
+      q.delUserSessions.run(target.id);
+      console.log(`[admin] ${user.name} → ${target.login} 임시 비밀번호 발급`);
+      return send(res, 200, { login: target.login, name: target.full_name, password: temp });
+    }
+
+    return send(res, 404, { error: "Not found" });
   }
 
   // 멘티: 받은 편지

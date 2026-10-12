@@ -14,13 +14,13 @@ import { openDb, hashPassword } from "./db.mjs";
 
 const db = openDb(join(resolve(process.env.DATA_DIR || "data"), "doran.db"));
 const [cmd, arg] = process.argv.slice(2);
-const ROLE = { mentee: "멘티", mentor: "멘토" };
+const ROLE = { mentee: "멘티", mentor: "멘토", admin: "관리자" };
 
 function table(rows) {
   if (!rows.length) return console.log("(없음)");
   for (const u of rows) {
     console.log(
-      [u.login.padEnd(8), ROLE[u.role], (u.full_name + (u.grade ? ` (${u.grade})` : "")).padEnd(14, "　"), u.pw_changed ? "직접 변경함" : "초기 비밀번호"].join("  ")
+      [u.login.padEnd(8), ROLE[u.role], (u.full_name + (u.grade ? ` (${u.grade})` : "")).padEnd(14, "　"), ["초기 비밀번호", "직접 변경함", "임시 비밀번호 발급됨"][u.pw_changed] || "?"].join("  ")
     );
   }
 }
@@ -41,7 +41,7 @@ switch (cmd) {
     const user = login && db.prepare("SELECT * FROM users WHERE login = ?").get(login);
     if (!user) { console.error(`아이디 '${arg ?? ""}' 를 찾을 수 없어요. (find <이름> 으로 찾아보세요)`); process.exit(1); }
     const temp = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
-    db.prepare("UPDATE users SET pw_hash = ?, pw_changed = 0 WHERE id = ?").run(hashPassword(temp), user.id);
+    db.prepare("UPDATE users SET pw_hash = ?, pw_changed = 2 WHERE id = ?").run(hashPassword(temp), user.id); // 2 = 관리자 발급
     db.prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id);
     console.log(`${user.full_name} (${ROLE[user.role]}, 아이디 ${user.login}) 임시 비밀번호: ${temp}`);
     console.log("→ 로그인하면 비밀번호를 바꾸라는 안내가 나와요. 기존 로그인은 모두 끊었어요.");

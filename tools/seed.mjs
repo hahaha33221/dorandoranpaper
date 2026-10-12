@@ -27,6 +27,9 @@ const LEGACY_IDS = join(ROOT, "tools", "mentee-ids.csv"); // 예전 아이디 �
 const ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // 헷갈리는 i, l, o, 0, 1 제외
 const rand = (alphabet, n) => Array.from(crypto.randomBytes(n), (b) => alphabet[b % alphabet.length]).join("");
 const newPassword = () => String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+// 마스터(관리자) 계정: 전체 현황을 보는 계정이라 비밀번호를 더 길게
+const ADMIN_LOGIN = "master";
+const newAdminPassword = () => rand("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789", 12);
 
 /* ---------- 엑셀 읽기 ---------- */
 const xlsxPath = resolve(
@@ -96,6 +99,7 @@ mkdirSync(PRIVATE, { recursive: true });
 const saved = existsSync(ACCOUNTS) ? JSON.parse(readFileSync(ACCOUNTS, "utf8")) : { mentee: {}, mentor: {} };
 saved.mentee ||= {};
 saved.mentor ||= {};
+saved.admin ||= {};
 
 // 예전(아이디만 쓰던 버전)에 만든 멘티 아이디는 그대로 이어서 사용
 if (existsSync(LEGACY_IDS)) {
@@ -108,6 +112,7 @@ if (existsSync(LEGACY_IDS)) {
 }
 
 const used = new Set([...Object.values(saved.mentee), ...Object.values(saved.mentor)].map((a) => a.login));
+used.add(ADMIN_LOGIN); // 멘토/멘티 아이디가 마스터 아이디와 겹치지 않게
 const newLogin = (prefix) => {
   let id;
   do id = prefix + rand(ID_ALPHABET, 6 - prefix.length); while (used.has(id));
@@ -125,6 +130,8 @@ for (const { key } of mentors) {
   if (!a.login) { a.login = newLogin("t"); created++; }
   if (!a.password) { a.password = newPassword(); created++; }
 }
+if (!saved.admin.login) { saved.admin.login = ADMIN_LOGIN; created++; }
+if (!saved.admin.password) { saved.admin.password = newAdminPassword(); created++; }
 writeFileSync(ACCOUNTS, JSON.stringify(saved, null, 2) + "\n");
 
 /* ---------- seed.json ---------- */
@@ -136,7 +143,11 @@ const users = [
   ...mentors.map((t, i) => ({
     login: saved.mentor[t.key].login, pw_hash: hashPassword(saved.mentor[t.key].password),
     role: "mentor", name: t.name, full_name: t.name, grade: "", sort: i
-  }))
+  })),
+  {
+    login: saved.admin.login, pw_hash: hashPassword(saved.admin.password),
+    role: "admin", name: "관리자", full_name: "관리자", grade: "", sort: 0
+  }
 ];
 const seed = {
   createdAt: new Date().toISOString(),
@@ -178,9 +189,10 @@ sheet("멘티", [...mentees].map(([key, m], i) => ({
 sheet("멘토", mentors.map((t, i) => ({
   no: i + 1, name: t.name, login: saved.mentor[t.key].login, password: saved.mentor[t.key].password
 })), false);
+sheet("관리자", [{ no: 1, name: "관리자 (전체 현황)", login: saved.admin.login, password: saved.admin.password }], false);
 await out.xlsx.writeFile(join(PRIVATE, "계정목록.xlsx"));
 
-console.log(`멘토 ${mentors.length}명 · 멘티 ${mentees.size}명 · 엑셀 편지 ${letters.length}통`);
+console.log(`멘토 ${mentors.length}명 · 멘티 ${mentees.size}명 · 관리자 1명 · 엑셀 편지 ${letters.length}통`);
 console.log("→ private/계정목록.xlsx  (아이디·비밀번호 목록)");
 console.log("→ private/seed.json      (서버 data/ 폴더에 올릴 파일)");
 if (created) console.log(`  새로 만든 아이디/비밀번호 ${created}개`);

@@ -560,3 +560,133 @@ body.is-locked { overflow: hidden; }
   .home__inner .title { margin: 0; font-size: clamp(40px, min(9vw, 20vh), 80px); }
   .home__inner .lock__msg { min-height: 0; }
 }
+
+/* ---------- 관리자: 전체 현황 ---------- */
+.admin { max-width: 1000px; margin-inline: auto; }
+.admin .title { margin-bottom: 6px; }
+.admin__updated {
+  margin: 0 0 clamp(18px, 3vw, 28px);
+  font-size: 14px;
+  color: rgba(0, 0, 0, .55);
+  text-align: center;
+}
+.admin__updated .linkish { padding: 2px 4px; font-size: 14px; }
+
+.admin__stats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: 12px;
+  margin-bottom: clamp(22px, 4vw, 32px);
+}
+.stat {
+  min-width: 0;
+  padding: 14px 16px 12px;
+  background: rgba(255, 255, 255, .72);
+  border: 1px solid rgba(119, 177, 126, .45);
+  border-radius: var(--radius);
+}
+.stat p { margin: 0; }
+.stat__label { font-size: 14px; font-weight: 600; color: #3f6a44; }
+.stat__value {
+  margin: 2px 0 8px !important;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 7vw, 36px);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.stat__value small { font-family: var(--font-body); font-size: 16px; font-weight: 500; color: rgba(0, 0, 0, .5); }
+.stat__note { margin-top: 6px !important; font-size: 13px; color: rgba(0, 0, 0, .6); word-break: keep-all; }
+
+.meter {
+  height: 8px;
+  background: rgba(119, 177, 126, .18);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.meter span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  background: var(--green);
+  border-radius: 999px;
+  transition: width .4s ease;
+}
+
+.admin__view { width: 100%; }
+.people {
+  list-style: none;
+  margin: 0; padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+}
+.person {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #fff6d6;
+  border: 1px dashed var(--orange-line);
+  border-radius: var(--radius);
+}
+.person.is-done { background: rgba(255, 255, 255, .8); border-style: solid; border-color: var(--green); }
+.person__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.person__name { margin: 0; min-width: 0; font-size: 19px; font-weight: 700; overflow-wrap: anywhere; }
+.person__name small { font-size: 14px; font-weight: 500; color: rgba(0, 0, 0, .5); }
+.person__login {
+  flex: none;
+  padding: 2px 8px;
+  background: rgba(0, 0, 0, .06);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.person__progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.person__count { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.person__meta {
+  list-style: none;
+  margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 4px 12px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, .7);
+}
+.person__meta .is-muted { color: #a5552a; }
+.person__reset { justify-self: start; padding: 2px 0; font-size: 14px; }
+
+/* 전체 표: 표만 가로 스크롤, 첫 열 고정 */
+.matrix {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(255, 255, 255, .72);
+  border: 1px solid rgba(119, 177, 126, .45);
+  border-radius: var(--radius);
+}
+.matrix:focus-visible { outline-offset: 2px; }
+.matrix table { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 14px; }
+.matrix th, .matrix td {
+  padding: 8px 10px;
+  text-align: center;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(119, 177, 126, .25);
+}
+.matrix thead th { font-weight: 600; color: #3f6a44; background: #fffbe6; position: sticky; top: 0; }
+.matrix th[scope="row"], .matrix thead th:first-child {
+  position: sticky; left: 0; z-index: 1;
+  background: #fffbe6;
+  text-align: left;
+  font-weight: 600;
+}
+.matrix thead th:first-child { z-index: 2; font-size: 12px; color: rgba(0, 0, 0, .5); }
+.matrix .cell {
+  display: inline-grid; place-items: center;
+  width: 32px; height: 32px;
+  border: 0; border-radius: 50%;
+  background: transparent;
+  color: rgba(0, 0, 0, .3);
+  font-size: 16px; font-weight: 700;
+}
+.matrix .cell.is-done { background: var(--green); color: #fff; cursor: pointer; }
+.matrix .cell.is-done:hover { filter: brightness(.92); }
+.matrix__sum { font-weight: 600; font-variant-numeric: tabular-nums; color: #3f6a44; }
+.matrix__foot th, .matrix__foot td { border-bottom: 0; background: rgba(119, 177, 126, .08); }

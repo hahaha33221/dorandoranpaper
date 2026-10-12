@@ -11,14 +11,16 @@ export function openDb(file) {
     PRAGMA foreign_keys = ON;
 
     CREATE TABLE IF NOT EXISTS users (
-      id         INTEGER PRIMARY KEY,
-      login      TEXT NOT NULL UNIQUE,
-      pw_hash    TEXT NOT NULL,
-      role       TEXT NOT NULL CHECK (role IN ('mentee', 'mentor')),
-      name       TEXT NOT NULL,
-      full_name  TEXT NOT NULL,
-      grade      TEXT NOT NULL DEFAULT '',
-      sort       INTEGER NOT NULL DEFAULT 0
+      id            INTEGER PRIMARY KEY,
+      login         TEXT NOT NULL UNIQUE,
+      pw_hash       TEXT NOT NULL,
+      role          TEXT NOT NULL CHECK (role IN ('mentee', 'mentor', 'admin')),
+      name          TEXT NOT NULL,
+      full_name     TEXT NOT NULL,
+      grade         TEXT NOT NULL DEFAULT '',
+      sort          INTEGER NOT NULL DEFAULT 0,
+      pw_changed    INTEGER NOT NULL DEFAULT 0,
+      last_login_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS letters (
@@ -36,10 +38,51 @@ export function openDb(file) {
     );
   `);
 
-  // 마이그레이션: 비밀번호를 직접 바꿨는지 (1이면 seed.json 이 덮어쓰지 않음)
-  const cols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
-  if (!cols.includes("pw_changed")) db.exec("ALTER TABLE users ADD COLUMN pw_changed INTEGER NOT NULL DEFAULT 0");
+  migrate(db);
   return db;
+}
+
+/* ---------- 마이그레이션 (예전 DB → 지금 구조) ---------- */
+const USERS_DDL = `CREATE TABLE users_new (
+      id            INTEGER PRIMARY KEY,
+      login         TEXT NOT NULL UNIQUE,
+      pw_hash       TEXT NOT NULL,
+      role          TEXT NOT NULL CHECK (role IN ('mentee', 'mentor', 'admin')),
+      name          TEXT NOT NULL,
+      full_name     TEXT NOT NULL,
+      grade         TEXT NOT NULL DEFAULT '',
+      sort          INTEGER NOT NULL DEFAULT 0,
+      pw_changed    INTEGER NOT NULL DEFAULT 0,
+      last_login_at TEXT
+    );`;
+
+function migrate(db) {
+  const cols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  // pw_changed: 비밀번호를 직접 바꿨는지 (1이면 seed.json 이 덮어쓰지 않음)
+  if (!cols.includes("pw_changed")) db.exec("ALTER TABLE users ADD COLUMN pw_changed INTEGER NOT NULL DEFAULT 0");
+  if (!cols.includes("last_login_at")) db.exec("ALTER TABLE users ADD COLUMN last_login_at TEXT");
+
+  // role 에 'admin' 추가 — SQLite 는 CHECK 를 바꿀 수 없어 표를 새로 만들어 옮김 (편지/세션은 그대로)
+  const ddl = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get().sql;
+  if (!ddl.includes("'admin'")) {
+    db.exec("PRAGMA foreign_keys = OFF");
+    db.exec("BEGIN");
+    try {
+      db.exec(USERS_DDL);
+      db.exec(`INSERT INTO users_new (id, login, pw_hash, role, name, full_name, grade, sort, pw_changed, last_login_at)
+               SELECT id, login, pw_hash, role, name, full_name, grade, sort, pw_changed, last_login_at FROM users`);
+      db.exec("DROP TABLE users");
+      db.exec("ALTER TABLE users_new RENAME TO users");
+      const broken = db.prepare("PRAGMA foreign_key_check").all();
+      if (broken.length) throw new Error("foreign key check failed: " + JSON.stringify(broken));
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    } finally {
+      db.exec("PRAGMA foreign_keys = ON");
+    }
+  }
 }
 
 /* ---------- 비밀번호 ---------- */
@@ -59,7 +102,8 @@ export function verifyPassword(password, stored) {
 
 /*
  * seed.json (npm run seed 로 생성) 을 DB에 반영.
- * - 계정은 login 기준으로 추가/갱신. 비밀번호는 사용자가 직접 바꾸지 않은 경우에만 갱신
+ * - 계정은 login 기준으로 추가/갱신. 비밀번호는 처음 비밀번호 그대로인 경우에만 갱신
+ *   (pw_changed: 0 처음 비밀번호, 1 본인이 바꿈, 2 관리자가 임시 비밀번호 발급)
  * - 편지는 DB에 아직 없는 것만 추가 → 웹에서 쓴 편지를 덮어쓰지 않음
  * 반영 후 파일은 seed.imported-<시각>.json 으로 이름을 바꿔 다시 적용되지 않게 합니다.
  */
@@ -70,7 +114,7 @@ export function importSeed(db, file) {
     INSERT INTO users (login, pw_hash, role, name, full_name, grade, sort)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(login) DO UPDATE SET
-      pw_hash = CASE WHEN users.pw_changed = 1 THEN users.pw_hash ELSE excluded.pw_hash END,
+      pw_hash = CASE WHEN users.pw_changed = 0 THEN excluded.pw_hash ELSE users.pw_hash END,
       role = excluded.role, name = excluded.name,
       full_name = excluded.full_name, grade = excluded.grade, sort = excluded.sort
   `);
