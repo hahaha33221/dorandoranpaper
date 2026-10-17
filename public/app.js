@@ -380,12 +380,12 @@
 
     // 회차 순서(1회차부터)로 한 줄 목록 — 날짜는 보여 주지 않음
     list.append(h("ul", { class: "albums" }, albums.map((a, i) => a.upcoming
-      ? h("li", null, h("div", { class: "album-card is-upcoming", "aria-label": `${a.title} 준비 중` }, [
+      ? h("li", null, h("div", { class: "album-card is-upcoming", "aria-label": `${a.title} ${a.label || "준비 중"}` }, [
           h("div", { class: "polaroids", "aria-hidden": "true" },
             h("span", { class: "polaroid", style: `--r:${i % 2 ? 4 : -4}deg; --z:1` }, h("i", { text: "📷" }))),
           h("div", { class: "album-card__text" }, [
             h("p", { class: "album-card__title", text: a.title }),
-            h("p", { class: "album-card__count" }, h("span", { class: "badge-soon", text: "준비 중" }))
+            h("p", { class: "album-card__count" }, h("span", { class: "badge-soon", text: a.label || "준비 중" }))
           ])
         ]))
       : h("li", null, h("a", { class: "album-card" + (a.hidden ? " is-hidden" : ""), href: "#/photos/" + a.id }, [
@@ -419,14 +419,35 @@
           try { await request("POST", "/admin/photos/scan"); } catch (err) { alert(err.message); }
         } })
       ]);
-      const upInput = h("input", { type: "text", inputmode: "numeric", value: (data.upcomingSessions || []).join(", "), placeholder: "예: 6", "aria-label": "준비 중으로 보일 회차" });
+      // 준비 중 회차: 회차 번호 + 안내 문구 (예: 6 / 10월 20일 공개 예정)
+      const rows = h("div", { class: "upcoming-rows" });
       const upMsg = h("span", { class: "album-edit__msg", role: "status" });
+      function addRow(item) {
+        const num = h("input", { type: "text", inputmode: "numeric", value: item ? String(item.session) : "", placeholder: "회차", "aria-label": "회차 번호", class: "upcoming-num" });
+        const label = h("input", { type: "text", value: item ? item.label : "", placeholder: "준비 중", maxlength: 30, "aria-label": "안내 문구", class: "upcoming-label" });
+        const row = h("div", { class: "upcoming-row" }, [num, h("span", { text: "회차" }), label,
+          h("button", { type: "button", class: "linkish", text: "삭제", onclick: () => row.remove() })]);
+        rows.append(row);
+      }
+      (data.upcoming || []).forEach(addRow);
+      if (!rows.children.length) addRow(null);
       adminBar = h("div", null, [adminBar, h("form", { class: "upcoming-edit", onsubmit: async (e) => {
         e.preventDefault();
-        const sessions = upInput.value.split(/[^0-9]+/).filter(Boolean).map(Number);
-        try { await request("PUT", "/admin/settings/upcoming", { sessions }); upMsg.textContent = "저장했어요"; setTimeout(render, 600); }
+        const items = [...rows.children].map((r) => ({
+          session: Number(r.querySelector(".upcoming-num").value.replace(/[^0-9]/g, "")),
+          label: r.querySelector(".upcoming-label").value
+        })).filter((it) => it.session > 0);
+        try { await request("PUT", "/admin/settings/upcoming", { items }); upMsg.textContent = "저장했어요"; setTimeout(render, 600); }
         catch (err) { upMsg.textContent = err.message; }
-      } }, [h("label", { text: "준비 중 회차" }), upInput, h("button", { class: "linkish", type: "submit", text: "저장" }), upMsg])]);
+      } }, [
+        h("p", { class: "upcoming-edit__title", text: "아직 사진이 없는 회차 안내 (멘티 화면에 카드로 보여요)" }),
+        rows,
+        h("div", { class: "upcoming-edit__actions" }, [
+          h("button", { type: "button", class: "linkish", text: "+ 회차 추가", onclick: () => addRow(null) }),
+          h("button", { type: "submit", class: "linkish", text: "저장" }),
+          upMsg
+        ])
+      ])]);
     }
 
     app.append(h("section", { class: "page" }, [

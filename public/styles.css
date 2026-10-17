@@ -868,5 +868,15 @@ body.is-locked { overflow: hidden; }
   color: #5a4500;
   font-size: 13px; font-weight: 700;
 }
-.upcoming-edit { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; margin: -6px 0 16px; font-size: 14px; }
-.upcoming-edit input { width: 90px; height: 32px; padding: 0 10px; border: 1px solid var(--field-line); border-radius: 8px; font-size: 15px; }
+.upcoming-edit {
+  width: 100%; max-width: 520px;
+  margin: -4px auto 18px; padding: 10px 12px;
+  display: grid; gap: 8px;
+  background: rgba(255, 255, 255, .55); border: 1px dashed rgba(0, 0, 0, .2); border-radius: 12px;
+  font-size: 14px;
+}
+.upcoming-edit__title { margin: 0; font-weight: 600; color: #3f6a44; }
+.upcoming-rows { display: grid; gap: 6px; }
+.upcoming-row { display: grid; grid-template-columns: 52px auto minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+.upcoming-row input { height: 34px; min-width: 0; padding: 0 8px; border: 1px solid var(--field-line); border-radius: 8px; font-size: 15px; }
+.upcoming-edit__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }

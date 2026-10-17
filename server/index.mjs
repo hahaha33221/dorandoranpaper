@@ -29,8 +29,21 @@ const db = openDb(join(DATA_DIR, "doran.db"));
 const seeded = importSeed(db, join(DATA_DIR, "seed.json"));
 if (seeded) console.log(`seed.json 반영: 계정 ${seeded.users}개, 새 편지 ${seeded.letters}통`);
 const photos = setupPhotos(db, DATA_DIR);
+// 준비 중 회차: [{ session: 6, label: "10월 20일 공개 예정" }] (예전 형식 [6] 도 읽음)
 function upcomingSessions() {
-  try { return JSON.parse(q.getSetting.get("upcoming_sessions")?.value || "[]"); } catch { return []; }
+  let raw = [];
+  try { raw = JSON.parse(q.getSetting.get("upcoming_sessions")?.value || "[]"); } catch { raw = []; }
+  return cleanUpcoming(raw);
+}
+function cleanUpcoming(list) {
+  const out = new Map();
+  for (const it of Array.isArray(list) ? list : []) {
+    const session = Number(typeof it === "object" && it ? it.session : it);
+    if (!Number.isInteger(session) || session < 1 || session > 99) continue;
+    const label = (typeof it === "object" && typeof it.label === "string" ? it.label.trim() : "").slice(0, 30) || "준비 중";
+    out.set(session, { session, label });
+  }
+  return [...out.values()].sort((a, b) => a.session - b.session);
 }
 // 예전에 더 길게 잡힌 로그인(멘토 7일 등)도 지금부터 최대 24시간으로
 db.prepare("UPDATE sessions SET expires_at = min(expires_at, ?)").run(Date.now() + SESSION_HOURS * 3600 * 1000);
@@ -269,11 +282,11 @@ async function api(req, res, path) {
       // '준비 중' 회차: 그 회차 사진이 아직 하나도 안 보이면 자리 표시 카드
       const upcoming = upcomingSessions();
       const shown = new Set(all.filter((a) => a.count > 0 && !a.hidden).map((a) => a.session));
-      for (const n of upcoming) {
-        if (!shown.has(n)) albums.push({ id: null, session: n, title: `${n}회차`, count: 0, previews: [], upcoming: true });
+      for (const u of upcoming) {
+        if (!shown.has(u.session)) albums.push({ id: null, session: u.session, title: `${u.session}회차`, label: u.label, count: 0, previews: [], upcoming: true });
       }
       albums.sort((x, y) => (x.session ?? 1e9) - (y.session ?? 1e9));
-      const out = { albums, upcomingSessions: isAdmin ? upcoming : undefined };
+      const out = { albums, upcoming: isAdmin ? upcoming : undefined };
       if (isAdmin) out.status = { ...photos.status, ...photos.syncInfo(), errors: q.photoErrors.get().n };
       return send(res, 200, out);
     }
@@ -346,9 +359,9 @@ async function api(req, res, path) {
     }
     if (path === "/api/admin/settings/upcoming" && method === "PUT") {
       const b = await readJson(req);
-      const list = [...new Set((Array.isArray(b.sessions) ? b.sessions : []).map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 100))].sort((x, y) => x - y);
+      const list = cleanUpcoming(Array.isArray(b.items) ? b.items : b.sessions);
       q.putSetting.run("upcoming_sessions", JSON.stringify(list));
-      return send(res, 200, { ok: true, sessions: list });
+      return send(res, 200, { ok: true, items: list });
     }
     if (path === "/api/admin/photos/scan" && method === "POST") {
       photos.requestSync(); // 원드라이브 동기화 + 변환 (백그라운드)
