@@ -25,9 +25,17 @@ jobs:
 
       - name: 비공개 파일이 커밋되지 않았는지 확인
         run: |
-          leaked=$(git ls-files | grep -Ei '\.(xlsx|xls|csv|db)$|^private/|^data/|(^|/)seed\.json$|(^|/)\.env$' || true)
+          leaked=$(git ls-files | grep -Ei '\.(xlsx|xls|csv|db)$|^private/|^data/|^rclone/|rclone\.conf$|(^|/)seed\.json$|(^|/)\.env$' || true)
           if [ -n "$leaked" ]; then
             echo "::error::비공개 파일이 저장소에 포함되어 있어요: $leaked"
+            exit 1
+          fi
+
+      - name: 사진·동영상이 커밋되지 않았는지 확인 (아이들 사진 보호)
+        run: |
+          media=$(git ls-files | grep -Ei '\.(jpe?g|png|heic|heif|webp|gif|tiff?|raw|dng|mp4|mov|m4v|avi|3gp|zip)$' | grep -v '^public/assets/' || true)
+          if [ -n "$media" ]; then
+            echo "::error::사진·동영상 파일이 저장소에 포함되어 있어요. 공개 저장소이니 바로 지워 주세요: $media"
             exit 1
           fi
 
@@ -49,6 +57,8 @@ jobs:
           bash -n deploy/setup-vps.sh
           API_DOMAIN=example.com docker compose config -q
           COMPOSE_PROFILES=standalone API_DOMAIN=example.com docker compose config -q
+          COMPOSE_PROFILES=photos PHOTOS_REMOTE=onedrive:test API_DOMAIN=example.com docker compose config -q
+          sh -n deploy/photos-sync.sh
 
       - name: Docker 이미지 빌드
         run: docker build -t dorandoran-api .

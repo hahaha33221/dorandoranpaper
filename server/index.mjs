@@ -263,7 +263,7 @@ async function api(req, res, path) {
         return { id: a.id, date: a.date, title: a.title, description: a.description, count: a.count, previews, hidden: !!a.hidden, folder: isAdmin ? a.folder : undefined };
       });
       const out = { albums };
-      if (isAdmin) out.status = { ...photos.status, errors: q.photoErrors.get().n };
+      if (isAdmin) out.status = { ...photos.status, ...photos.syncInfo(), errors: q.photoErrors.get().n };
       return send(res, 200, out);
     }
     const am = path.match(/^\/api\/albums\/(\d+)$/);
@@ -334,7 +334,7 @@ async function api(req, res, path) {
       return send(res, 200, { ok: true });
     }
     if (path === "/api/admin/photos/scan" && method === "POST") {
-      photos.scan(); // 백그라운드
+      photos.requestSync(); // 원드라이브 동기화 + 변환 (백그라운드)
       return send(res, 202, { ok: true });
     }
 

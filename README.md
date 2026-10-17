@@ -49,7 +49,36 @@ npm run seed
 
 멘티와 관리자만 볼 수 있습니다. (멘토 X)
 
-### 사진 올리기
+### 원드라이브 자동 동기화 (추천)
+
+VPS 가 원드라이브 사진첩 폴더를 **직접** 가져옵니다 (Mac 저장 공간 사용 X, 원드라이브는 읽기만).
+`dorandoran-photos-sync` 컨테이너(공식 rclone 이미지)가 30분마다, 그리고 관리자 **지금 확인** 버튼을 누르면 바로 동기화합니다.
+
+**처음 한 번 연결**
+
+1. Mac 에서 원드라이브 로그인 → 연결 정보 파일 만들기 (브라우저가 열리면 Microsoft 로그인 → 허용)
+
+   ```bash
+   ~/.local/bin/rclone config create dorandoran onedrive --config "$HOME/Documents/1.개발폴더/17.도란도란/private/rclone.conf"
+   ```
+   질문이 나오면: 종류는 `OneDrive Personal or Business`, 드라이브는 목록의 첫 번째(개인 드라이브) 선택.
+
+2. 연결 정보를 VPS 로 보내기 (비공개 파일 — GitHub 에는 올라가지 않음)
+
+   ```bash
+   scp "$HOME/Documents/1.개발폴더/17.도란도란/private/rclone.conf" root@srv1809055.hstgr.cloud:/opt/dorandoran/rclone/rclone.conf
+   ```
+
+3. VPS `.env` 에 사진첩 폴더와 동기화 켜기 → `docker compose up -d`
+
+   ```
+   COMPOSE_PROFILES=photos
+   PHOTOS_REMOTE=dorandoran:도란도란/사진첩
+   ```
+
+로그: `docker logs dorandoran-photos-sync`
+
+### 사진 올리기 (Mac 폴더에서 직접 보낼 때)
 
 원드라이브 사진첩 폴더 안을 **날짜별 폴더**로 정리합니다. 폴더 이름 = 앨범 날짜 + 활동명.
 

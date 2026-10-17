@@ -13,3 +13,25 @@ data/
 .vercel/
 .vercel
 .env*
+
+# 사진·동영상 — 공개 저장소에 아이들 사진이 올라가지 않게 (사이트 아이콘 등이 필요하면 public/assets/ 에만)
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.heif
+*.webp
+*.gif
+*.tif
+*.tiff
+*.raw
+*.dng
+*.mp4
+*.mov
+*.m4v
+*.avi
+*.3gp
+*.zip
+!public/assets/**
+rclone/
+rclone.conf

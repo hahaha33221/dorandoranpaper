@@ -335,7 +335,9 @@
     if (isAdmin) {
       const st = data.status || {};
       const parts = [
-        st.running ? "새 사진 확인 중…" : st.lastRunAt ? `마지막 확인 ${ago(st.lastRunAt.replace("T", " ").slice(0, 19))}` : "아직 확인 전",
+        st.lastSyncAt ? `원드라이브에서 가져옴 ${ago(st.lastSyncAt.replace("T", " ").slice(0, 19))}` : null,
+        st.lastSyncErrorAt && (!st.lastSyncAt || st.lastSyncErrorAt > st.lastSyncAt) ? "⚠︎ 원드라이브 연결 오류" : null,
+        st.running ? "새 사진 변환 중…" : st.lastRunAt ? `마지막 확인 ${ago(st.lastRunAt.replace("T", " ").slice(0, 19))}` : "아직 확인 전",
         st.pending ? `변환 대기 ${st.pending}장` : null,
         st.errors ? `변환 실패 ${st.errors}장` : null,
         st.lastError ? `오류: ${st.lastError}` : null

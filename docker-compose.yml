@@ -25,6 +25,30 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # 원드라이브 사진첩 자동 동기화 — 연결 후 .env 에 COMPOSE_PROFILES=photos, PHOTOS_REMOTE=... 를 넣으면 켜짐
+  photos-sync:
+    profiles: [photos]
+    image: rclone/rclone:1
+    container_name: dorandoran-photos-sync
+    restart: unless-stopped
+    user: "1000:1000"
+    entrypoint: ["/bin/sh", "/sync.sh"]
+    environment:
+      PHOTOS_REMOTE: ${PHOTOS_REMOTE:-}
+      PHOTOS_INTERVAL: ${PHOTOS_INTERVAL:-1800}
+      RCLONE_CONFIG: /config/rclone.conf
+      HOME: /tmp
+    volumes:
+      - ./data/photos-src:/data
+      - ./rclone:/config # rclone.conf (원드라이브 연결 정보, 비공개)
+      - ./deploy/photos-sync.sh:/sync.sh:ro
+    networks: [dorandoran]
+    mem_limit: 256m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+
   caddy:
     profiles: [standalone]
     image: caddy:2-alpine

@@ -227,5 +227,15 @@ export function setupPhotos(db, dataDir) {
     return join(OUT, String(id), SIZES[size].file);
   }
 
-  return { scan, status, url, verify, filePath, SIZES };
+  // 관리자 '지금 확인': 원드라이브 동기화 컨테이너에 바로 가져오라고 알리고, 이미 받은 사진도 바로 확인
+  function requestSync() {
+    try { writeFileSync(join(SRC, ".sync-now"), new Date().toISOString()); } catch { /* 동기화 미사용 */ }
+    scan();
+  }
+  function syncInfo() {
+    const read = (f) => { try { return readFileSync(join(SRC, f), "utf8").trim(); } catch { return null; } };
+    return { lastSyncAt: read(".last-sync"), lastSyncErrorAt: read(".last-sync-error") };
+  }
+
+  return { scan, status, url, verify, filePath, SIZES, requestSync, syncInfo };
 }
