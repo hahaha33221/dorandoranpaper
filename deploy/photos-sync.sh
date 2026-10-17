@@ -1,8 +1,8 @@
 #!/bin/sh
 # 원드라이브 사진첩 폴더 → /data (= data/photos-src) 주기적 동기화 (원드라이브는 읽기만 함)
 #   PHOTOS_REMOTE   예) onedrive:도란도란/사진첩
-#   PHOTOS_INTERVAL 초, 기본 1800 (30분)
-# /data/.sync-now 가 생기면(관리자 '지금 확인') 바로 동기화
+#   PHOTOS_INTERVAL 초, 기본 1800 (30분). 0 이면 자동으로 가져오지 않고 버튼을 누를 때만
+# /data/.sync-now 가 생기면(관리자 '원드라이브에서 가져오기') 바로 동기화
 set -u
 INTERVAL="${PHOTOS_INTERVAL:-1800}"
 [ -n "${PHOTOS_REMOTE:-}" ] || { echo "PHOTOS_REMOTE 가 비어 있어요"; sleep 3600; exit 1; }
@@ -22,6 +22,14 @@ sync_once() {
     date -u '+%FT%TZ' > /data/.last-sync-error
   fi
 }
+
+if [ "$INTERVAL" = "0" ]; then
+  echo "수동 모드: 관리자 화면의 '원드라이브에서 가져오기'를 누를 때만 가져와요"
+  while true; do
+    if [ -f /data/.sync-now ]; then rm -f /data/.sync-now; sync_once; fi
+    sleep 15
+  done
+fi
 
 while true; do
   rm -f /data/.sync-now

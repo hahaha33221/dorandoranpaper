@@ -29,6 +29,9 @@ const db = openDb(join(DATA_DIR, "doran.db"));
 const seeded = importSeed(db, join(DATA_DIR, "seed.json"));
 if (seeded) console.log(`seed.json 반영: 계정 ${seeded.users}개, 새 편지 ${seeded.letters}통`);
 const photos = setupPhotos(db, DATA_DIR);
+function upcomingSessions() {
+  try { return JSON.parse(q.getSetting.get("upcoming_sessions")?.value || "[]"); } catch { return []; }
+}
 // 예전에 더 길게 잡힌 로그인(멘토 7일 등)도 지금부터 최대 24시간으로
 db.prepare("UPDATE sessions SET expires_at = min(expires_at, ?)").run(Date.now() + SESSION_HOURS * 3600 * 1000);
 
@@ -93,7 +96,9 @@ const q = {
     title = COALESCE(?, title), title_custom = CASE WHEN ? IS NULL THEN title_custom ELSE 1 END,
     description = COALESCE(?, description), hidden = COALESCE(?, hidden), cover_id = COALESCE(?, cover_id)
     WHERE id = ?`),
-  setPhotoHidden: db.prepare("UPDATE photos SET hidden = ? WHERE id = ?")
+  setPhotoHidden: db.prepare("UPDATE photos SET hidden = ? WHERE id = ?"),
+  getSetting: db.prepare("SELECT value FROM settings WHERE key = ?"),
+  putSetting: db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
 };
 
 /* ---------- 로그인 시도 제한 (IP별, 아이디별) ---------- */
@@ -254,13 +259,21 @@ async function api(req, res, path) {
       thumb: photos.url(p.id, "t"), large: photos.url(p.id, "l")
     });
     if (path === "/api/albums" && method === "GET") {
-      const albums = q.albums.all(isAdmin, isAdmin).filter((a) => isAdmin || a.count > 0).map((a) => {
+      const all = q.albums.all(isAdmin, isAdmin);
+      const albums = all.filter((a) => isAdmin || a.count > 0).map((a) => {
         const list = q.albumPhotos.all(a.id, 0);
         const cover = list.find((p) => p.id === a.cover_id) || list[0];
         const previews = [cover, ...list.filter((p) => p !== cover)].filter(Boolean).slice(0, 4).map((p) => photos.url(p.id, "t"));
-        return { id: a.id, date: a.date, title: a.title, description: a.description, count: a.count, previews, hidden: !!a.hidden, folder: isAdmin ? a.folder : undefined };
+        return { id: a.id, session: a.session, date: a.date, title: a.title, description: a.description, count: a.count, previews, hidden: !!a.hidden, folder: isAdmin ? a.folder : undefined };
       });
-      const out = { albums };
+      // '준비 중' 회차: 그 회차 사진이 아직 하나도 안 보이면 자리 표시 카드
+      const upcoming = upcomingSessions();
+      const shown = new Set(all.filter((a) => a.count > 0 && !a.hidden).map((a) => a.session));
+      for (const n of upcoming) {
+        if (!shown.has(n)) albums.push({ id: null, session: n, title: `${n}회차`, count: 0, previews: [], upcoming: true });
+      }
+      albums.sort((x, y) => (x.session ?? 1e9) - (y.session ?? 1e9));
+      const out = { albums, upcomingSessions: isAdmin ? upcoming : undefined };
       if (isAdmin) out.status = { ...photos.status, ...photos.syncInfo(), errors: q.photoErrors.get().n };
       return send(res, 200, out);
     }
@@ -330,6 +343,12 @@ async function api(req, res, path) {
       if (typeof b.hidden !== "boolean") return send(res, 400, { error: "잘못된 요청이에요." });
       q.setPhotoHidden.run(Number(b.hidden), Number(ap[1]));
       return send(res, 200, { ok: true });
+    }
+    if (path === "/api/admin/settings/upcoming" && method === "PUT") {
+      const b = await readJson(req);
+      const list = [...new Set((Array.isArray(b.sessions) ? b.sessions : []).map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 100))].sort((x, y) => x - y);
+      q.putSetting.run("upcoming_sessions", JSON.stringify(list));
+      return send(res, 200, { ok: true, sessions: list });
     }
     if (path === "/api/admin/photos/scan" && method === "POST") {
       photos.requestSync(); // 원드라이브 동기화 + 변환 (백그라운드)

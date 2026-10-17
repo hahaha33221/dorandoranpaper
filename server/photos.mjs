@@ -42,6 +42,7 @@ export function setupPhotos(db, dataDir) {
     );
     CREATE INDEX IF NOT EXISTS photos_album ON photos(album_id);
   `);
+  db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
   const albumCols = db.prepare("PRAGMA table_info(albums)").all().map((c) => c.name);
   if (!albumCols.includes("session")) db.exec("ALTER TABLE albums ADD COLUMN session INTEGER");
   if (!albumCols.includes("date_from_folder")) db.exec("ALTER TABLE albums ADD COLUMN date_from_folder INTEGER NOT NULL DEFAULT 1");

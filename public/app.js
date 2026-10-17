@@ -374,13 +374,21 @@
     const albums = data.albums;
     const list = h("div", { class: "timeline" });
 
-    if (!albums.length) {
+    if (!albums.some((a) => !a.upcoming)) {
       list.append(h("p", { class: "empty", text: isAdmin ? "아직 올라온 사진이 없어요. npm run photos:sync 로 사진 폴더를 보내 주세요." : "아직 올라온 사진이 없어요." }));
     }
 
     // 회차 순서(1회차부터)로 한 줄 목록 — 날짜는 보여 주지 않음
-    list.append(h("ul", { class: "albums" }, albums.map((a, i) =>
-      h("li", null, h("a", { class: "album-card" + (a.hidden ? " is-hidden" : ""), href: "#/photos/" + a.id }, [
+    list.append(h("ul", { class: "albums" }, albums.map((a, i) => a.upcoming
+      ? h("li", null, h("div", { class: "album-card is-upcoming", "aria-label": `${a.title} 준비 중` }, [
+          h("div", { class: "polaroids", "aria-hidden": "true" },
+            h("span", { class: "polaroid", style: `--r:${i % 2 ? 4 : -4}deg; --z:1` }, h("i", { text: "📷" }))),
+          h("div", { class: "album-card__text" }, [
+            h("p", { class: "album-card__title", text: a.title }),
+            h("p", { class: "album-card__count" }, h("span", { class: "badge-soon", text: "준비 중" }))
+          ])
+        ]))
+      : h("li", null, h("a", { class: "album-card" + (a.hidden ? " is-hidden" : ""), href: "#/photos/" + a.id }, [
         h("div", { class: "polaroids", "aria-hidden": "true" },
           (a.previews.length ? a.previews.slice(0, 3) : [null]).map((src, k) =>
             h("span", { class: "polaroid", style: `--r:${[-5, 4, -2][k] * (i % 2 ? -1 : 1)}deg; --z:${3 - k}` },
@@ -405,12 +413,20 @@
       ].filter(Boolean);
       adminBar = h("div", { class: "admin-bar" }, [
         h("span", { text: parts.join(" · ") }),
-        h("button", { class: "linkish", type: "button", text: "지금 확인", onclick: async (e) => {
+        h("button", { class: "linkish", type: "button", text: "원드라이브에서 가져오기", onclick: async (e) => {
           e.currentTarget.disabled = true;
+          e.currentTarget.textContent = "가져오는 중… (몇 분 뒤 새로고침)";
           try { await request("POST", "/admin/photos/scan"); } catch (err) { alert(err.message); }
-          setTimeout(render, 2500);
         } })
       ]);
+      const upInput = h("input", { type: "text", inputmode: "numeric", value: (data.upcomingSessions || []).join(", "), placeholder: "예: 6", "aria-label": "준비 중으로 보일 회차" });
+      const upMsg = h("span", { class: "album-edit__msg", role: "status" });
+      adminBar = h("div", null, [adminBar, h("form", { class: "upcoming-edit", onsubmit: async (e) => {
+        e.preventDefault();
+        const sessions = upInput.value.split(/[^0-9]+/).filter(Boolean).map(Number);
+        try { await request("PUT", "/admin/settings/upcoming", { sessions }); upMsg.textContent = "저장했어요"; setTimeout(render, 600); }
+        catch (err) { upMsg.textContent = err.message; }
+      } }, [h("label", { text: "준비 중 회차" }), upInput, h("button", { class: "linkish", type: "submit", text: "저장" }), upMsg])]);
     }
 
     app.append(h("section", { class: "page" }, [

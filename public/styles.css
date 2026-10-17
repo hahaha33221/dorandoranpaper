@@ -854,3 +854,19 @@ body.is-locked { overflow: hidden; }
 .confirm__actions .pill { min-height: 48px; font-size: 18px; padding-inline: 8px; }
 .confirm__cancel { background: #fff; border-color: var(--pink-line); }
 .confirm__ok { background: var(--pink); border-color: var(--pink-line); }
+
+/* '준비 중' 회차 */
+.album-card.is-upcoming { background: rgba(255, 255, 255, .45); border: 1px dashed rgba(0, 0, 0, .2); cursor: default; }
+.album-card.is-upcoming:hover { transform: none; box-shadow: none; }
+.album-card.is-upcoming .album-card__title { color: rgba(0, 0, 0, .55); }
+.album-card.is-upcoming .polaroid { background: #fffdf3; }
+.badge-soon {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--yellow);
+  color: #5a4500;
+  font-size: 13px; font-weight: 700;
+}
+.upcoming-edit { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; margin: -6px 0 16px; font-size: 14px; }
+.upcoming-edit input { width: 90px; height: 32px; padding: 0 10px; border: 1px solid var(--field-line); border-radius: 8px; font-size: 15px; }
