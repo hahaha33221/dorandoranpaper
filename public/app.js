@@ -378,7 +378,7 @@
       list.append(h("p", { class: "empty", text: isAdmin ? "아직 올라온 사진이 없어요. npm run photos:sync 로 사진 폴더를 보내 주세요." : "아직 올라온 사진이 없어요." }));
     }
 
-    // 회차 순서(최신 회차 먼저)로 한 줄 목록 — 날짜는 보여 주지 않음
+    // 회차 순서(1회차부터)로 한 줄 목록 — 날짜는 보여 주지 않음
     list.append(h("ul", { class: "albums" }, albums.map((a, i) =>
       h("li", null, h("a", { class: "album-card" + (a.hidden ? " is-hidden" : ""), href: "#/photos/" + a.id }, [
         h("div", { class: "polaroids", "aria-hidden": "true" },
