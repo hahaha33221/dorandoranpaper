@@ -880,3 +880,7 @@ body.is-locked { overflow: hidden; }
 .upcoming-row { display: grid; grid-template-columns: 52px auto minmax(0, 1fr) auto; align-items: center; gap: 6px; }
 .upcoming-row input { height: 34px; min-width: 0; padding: 0 8px; border: 1px solid var(--field-line); border-radius: 8px; font-size: 15px; }
 .upcoming-edit__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+
+/* 관리자: 변환 중 안내 */
+.album-card__pending { margin-top: 4px !important; font-size: 13px; font-weight: 600; color: #a5552a; }
+.album-head__pending { margin: -8px 0 14px; padding: 8px 12px; border-radius: 10px; background: #fff6d6; font-size: 14px; color: #a5552a; text-align: center; word-break: keep-all; }

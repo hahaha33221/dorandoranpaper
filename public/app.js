@@ -395,7 +395,8 @@
               src ? h("img", { src, alt: "", loading: "lazy", decoding: "async" }) : h("i", { text: "📷" })))),
         h("div", { class: "album-card__text" }, [
           h("p", { class: "album-card__title", text: a.title }),
-          h("p", { class: "album-card__count", text: `사진 ${a.count}장` + (a.hidden ? " · 숨김" : "") })
+          h("p", { class: "album-card__count", text: `사진 ${a.count}장` + (a.hidden ? " · 숨김" : "") }),
+          a.sourceCount > a.count ? h("p", { class: "album-card__pending", text: `원본 ${a.sourceCount}장 중 ${a.sourceCount - a.count}장 변환 중` }) : null
         ])
       ]))
     )));
@@ -509,6 +510,7 @@
         h("h1", { class: "title title--album", text: album.title }),
         album.description ? h("p", { class: "album-head__desc", text: album.description }) : null,
         h("p", { class: "album-head__count", text: `사진 ${photos.length}장 · 사진을 누르면 크게 볼 수 있어요` }),
+        album.sourceCount > photos.length ? h("p", { class: "album-head__pending", text: `원드라이브 원본 ${album.sourceCount}장 중 ${album.sourceCount - photos.length}장은 아직 변환 중이에요. 잠시 뒤 새로고침하면 보여요.` }) : null,
         editor,
         photos.length ? grid : h("p", { class: "empty", text: "사진이 아직 없어요." })
       ])])

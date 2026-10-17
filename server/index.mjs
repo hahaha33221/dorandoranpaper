@@ -277,7 +277,11 @@ async function api(req, res, path) {
         const list = q.albumPhotos.all(a.id, 0);
         const cover = list.find((p) => p.id === a.cover_id) || list[0];
         const previews = [cover, ...list.filter((p) => p !== cover)].filter(Boolean).slice(0, 4).map((p) => photos.url(p.id, "t"));
-        return { id: a.id, session: a.session, date: a.date, title: a.title, description: a.description, count: a.count, previews, hidden: !!a.hidden, folder: isAdmin ? a.folder : undefined };
+        return {
+          id: a.id, session: a.session, date: a.date, title: a.title, description: a.description, count: a.count, previews, hidden: !!a.hidden,
+          folder: isAdmin ? a.folder : undefined,
+          sourceCount: isAdmin ? photos.sourceCount(a.folder) : undefined // 원드라이브에서 받은 원본 수
+        };
       });
       // '준비 중' 회차: 그 회차 사진이 아직 하나도 안 보이면 자리 표시 카드
       const upcoming = upcomingSessions();
@@ -295,7 +299,8 @@ async function api(req, res, path) {
       const a = q.album.get(Number(am[1]), isAdmin);
       if (!a) return send(res, 404, { error: "앨범을 찾을 수 없어요." });
       return send(res, 200, {
-        album: { id: a.id, date: a.date, title: a.title, description: a.description, hidden: !!a.hidden, coverId: a.cover_id },
+        album: { id: a.id, date: a.date, title: a.title, description: a.description, hidden: !!a.hidden, coverId: a.cover_id,
+          sourceCount: isAdmin ? photos.sourceCount(a.folder) : undefined },
         photos: q.albumPhotos.all(a.id, isAdmin).map(photoOut)
       });
     }

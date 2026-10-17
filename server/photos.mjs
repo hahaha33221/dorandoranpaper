@@ -268,5 +268,10 @@ export function setupPhotos(db, dataDir) {
     return { lastSyncAt: read(".last-sync"), lastSyncErrorAt: read(".last-sync-error") };
   }
 
-  return { scan, status, url, verify, filePath, SIZES, requestSync, syncInfo };
+  // 관리자용: 앨범 폴더에 있는 원본 사진 수 (변환 전 포함)
+  function sourceCount(folder) {
+    try { return listImages(join(SRC, folder)).length; } catch { return 0; }
+  }
+
+  return { scan, status, url, verify, filePath, SIZES, requestSync, syncInfo, sourceCount };
 }
