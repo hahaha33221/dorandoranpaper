@@ -368,14 +368,6 @@
   }
 
   /* ---------- 사진첩 ---------- */
-  const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"];
-  function albumDate(d) {
-    if (!d) return "";
-    const [y, m, day] = d.split("-").map(Number);
-    const wd = WEEKDAY[new Date(y, m - 1, day).getDay()];
-    return `${m}월 ${day}일 (${wd})`;
-  }
-
   function renderPhotos(data) {
     document.title = "사진첩 · " + TITLE;
     const isAdmin = current.user.role === "admin";
@@ -386,38 +378,19 @@
       list.append(h("p", { class: "empty", text: isAdmin ? "아직 올라온 사진이 없어요. npm run photos:sync 로 사진 폴더를 보내 주세요." : "아직 올라온 사진이 없어요." }));
     }
 
-    // 월별로 묶기
-    const groups = [];
-    for (const a of albums) {
-      const key = a.date ? a.date.slice(0, 7) : "etc";
-      let g = groups[groups.length - 1];
-      if (!g || g.key !== key) groups.push((g = { key, items: [] }));
-      g.items.push(a);
-    }
-    const monthLabel = (key) => key === "etc" ? "날짜 없음" : `${Number(key.slice(0, 4))}년 ${Number(key.slice(5))}월`;
-
-    const jump = groups.length > 1 ? h("nav", { class: "month-jump", "aria-label": "월 바로가기" },
-      groups.map((g) => h("a", { href: "#", text: monthLabel(g.key).replace(/^\d+년 /, ""), onclick: (e) => {
-        e.preventDefault();
-        document.getElementById("m-" + g.key)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      } }))) : null;
-
-    for (const g of groups) {
-      list.append(h("h2", { class: "month", id: "m-" + g.key, text: monthLabel(g.key) }));
-      list.append(h("ul", { class: "albums" }, g.items.map((a, i) =>
-        h("li", null, h("a", { class: "album-card" + (a.hidden ? " is-hidden" : ""), href: "#/photos/" + a.id }, [
-          h("div", { class: "polaroids", "aria-hidden": "true" },
-            (a.previews.length ? a.previews.slice(0, 3) : [null]).map((src, k) =>
-              h("span", { class: "polaroid", style: `--r:${[-5, 4, -2][k] * (i % 2 ? -1 : 1)}deg; --z:${3 - k}` },
-                src ? h("img", { src, alt: "", loading: "lazy", decoding: "async" }) : h("i", { text: "📷" })))),
-          h("div", { class: "album-card__text" }, [
-            a.date ? h("p", { class: "album-card__date", text: albumDate(a.date) }) : null,
-            h("p", { class: "album-card__title", text: a.title }),
-            h("p", { class: "album-card__count", text: `사진 ${a.count}장` + (a.hidden ? " · 숨김" : "") })
-          ])
-        ]))
-      )));
-    }
+    // 회차 순서(최신 회차 먼저)로 한 줄 목록 — 날짜는 보여 주지 않음
+    list.append(h("ul", { class: "albums" }, albums.map((a, i) =>
+      h("li", null, h("a", { class: "album-card" + (a.hidden ? " is-hidden" : ""), href: "#/photos/" + a.id }, [
+        h("div", { class: "polaroids", "aria-hidden": "true" },
+          (a.previews.length ? a.previews.slice(0, 3) : [null]).map((src, k) =>
+            h("span", { class: "polaroid", style: `--r:${[-5, 4, -2][k] * (i % 2 ? -1 : 1)}deg; --z:${3 - k}` },
+              src ? h("img", { src, alt: "", loading: "lazy", decoding: "async" }) : h("i", { text: "📷" })))),
+        h("div", { class: "album-card__text" }, [
+          h("p", { class: "album-card__title", text: a.title }),
+          h("p", { class: "album-card__count", text: `사진 ${a.count}장` + (a.hidden ? " · 숨김" : "") })
+        ])
+      ]))
+    )));
 
     let adminBar = null;
     if (isAdmin) {
@@ -444,7 +417,7 @@
       frame([h("div", { class: "letters photos" }, [
         sectionNav("#/photos"),
         h("h1", { class: "title title--name", text: "사진첩" }),
-        adminBar, jump, list
+        adminBar, list
       ])])
     ]));
   }
@@ -496,7 +469,6 @@
       frame([h("div", { class: "letters photos" }, [
         sectionNav("#/photos"),
         h("a", { class: "crumb", href: "#/photos", text: "← 사진첩" }),
-        album.date ? h("p", { class: "album-head__date", text: albumDate(album.date) }) : null,
         h("h1", { class: "title title--album", text: album.title }),
         album.description ? h("p", { class: "album-head__desc", text: album.description }) : null,
         h("p", { class: "album-head__count", text: `사진 ${photos.length}장 · 사진을 누르면 크게 볼 수 있어요` }),

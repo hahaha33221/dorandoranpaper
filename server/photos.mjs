@@ -108,7 +108,7 @@ export function setupPhotos(db, dataDir) {
       }
     }
     const session = name.match(/(\d+)\s*회차/);
-    return { date: null, title: name.trim(), session: session ? Number(session[1]) : null };
+    return { date: null, title: session ? `${Number(session[1])}회차` : name.trim(), session: session ? Number(session[1]) : null };
   }
 
   function listImages(dir) {
