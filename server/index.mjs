@@ -189,14 +189,9 @@ async function api(req, res, path) {
       "Content-Type": photos.SIZES[size].type,
       "Content-Length": st.size,
       "Cache-Control": "private, max-age=21600",
+      "Content-Disposition": "inline",
       "X-Content-Type-Options": "nosniff"
     };
-    if (url.searchParams.get("d") === "1") {
-      const p = q.photoForFile.get(id);
-      const n = p ? q.albumPhotos.all(p.album_id, 1).findIndex((x) => x.id === id) + 1 : id;
-      const name = `${p?.date || "사진"}_${(p?.title || "").replace(/[\\/:*?"<>|\s]+/g, "_")}_${String(n).padStart(2, "0")}.jpg`;
-      headers["Content-Disposition"] = `attachment; filename="photo.jpg"; filename*=UTF-8''${encodeURIComponent(name)}`;
-    }
     res.writeHead(200, headers);
     return createReadStream(file).pipe(res);
   }
@@ -256,7 +251,7 @@ async function api(req, res, path) {
     const isAdmin = user.role === "admin" ? 1 : 0;
     const photoOut = (p) => ({
       id: p.id, w: p.width, h: p.height, takenAt: p.taken_at, hidden: !!p.hidden,
-      thumb: photos.url(p.id, "t"), large: photos.url(p.id, "l"), download: photos.url(p.id, "l") + "&d=1"
+      thumb: photos.url(p.id, "t"), large: photos.url(p.id, "l")
     });
     if (path === "/api/albums" && method === "GET") {
       const albums = q.albums.all(isAdmin, isAdmin).filter((a) => isAdmin || a.count > 0).map((a) => {

@@ -506,11 +506,17 @@
     ]));
   }
 
-  /* 사진 크게 보기 (넘기기·다운로드) */
+  // 사진 저장 막기: 사진 위에서 오른쪽 클릭·길게 누르기 메뉴, 끌어서 저장 끄기
+  for (const ev of ["contextmenu", "dragstart"]) {
+    document.addEventListener(ev, (e) => {
+      if (e.target.closest && e.target.closest(".viewer__img, .thumb, .polaroid")) e.preventDefault();
+    });
+  }
+
+  /* 사진 크게 보기 (넘기기) */
   const viewer = document.getElementById("viewer");
   const viewerImg = document.getElementById("viewer-img");
   const viewerCount = document.getElementById("viewer-count");
-  const viewerDownload = document.getElementById("viewer-download");
   let viewing = null; // { list, index }
 
   function showPhoto(i) {
@@ -522,7 +528,6 @@
     viewerImg.src = p.large;
     viewerImg.alt = `${viewing.index + 1}번째 사진`;
     viewerCount.textContent = `${viewing.index + 1} / ${list.length}`;
-    viewerDownload.href = p.download;
     // 다음 사진 미리 불러오기
     const next = list[(viewing.index + 1) % list.length];
     if (next) new Image().src = next.large;
