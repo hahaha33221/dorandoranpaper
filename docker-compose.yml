@@ -16,6 +16,9 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:${API_PORT:-18787}:8787" # 외부 공개 X, 같은 서버의 프록시만 접근
+    environment:
+      PHOTOS_EXCLUDE: ${PHOTOS_EXCLUDE:-}
+      PHOTOS_SESSION_OFFSET: ${PHOTOS_SESSION_OFFSET:-0}
     volumes:
       - ./data:/app/data # SQLite DB + seed.json
     networks: [dorandoran]
@@ -36,6 +39,7 @@ services:
     environment:
       PHOTOS_REMOTE: ${PHOTOS_REMOTE:-}
       PHOTOS_INTERVAL: ${PHOTOS_INTERVAL:-1800}
+      PHOTOS_EXCLUDE: ${PHOTOS_EXCLUDE:-}
       RCLONE_CONFIG: /config/rclone.conf
       HOME: /tmp
     volumes:

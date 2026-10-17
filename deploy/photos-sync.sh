@@ -7,11 +7,23 @@ set -u
 INTERVAL="${PHOTOS_INTERVAL:-1800}"
 [ -n "${PHOTOS_REMOTE:-}" ] || { echo "PHOTOS_REMOTE 가 비어 있어요"; sleep 3600; exit 1; }
 
+# PHOTOS_EXCLUDE="폴더1,폴더2" → 그 폴더는 가져오지 않음
+EXCLUDES=""
+OLDIFS="$IFS"; IFS=","
+for f in ${PHOTOS_EXCLUDE:-}; do
+  f=$(echo "$f" | sed 's/^ *//; s/ *$//')
+  [ -n "$f" ] && EXCLUDES="$EXCLUDES
+/$f/**"
+done
+IFS="$OLDIFS"
+printf '%s\n' "$EXCLUDES" | sed '/^$/d' > /tmp/excludes.txt
+
 sync_once() {
   echo "[$(date '+%F %T')] 동기화 시작: $PHOTOS_REMOTE"
   if rclone sync "$PHOTOS_REMOTE" /data \
       --exclude ".*" --exclude "Thumbs.db" --exclude "desktop.ini" \
       --exclude "*.{mov,MOV,mp4,MP4,m4v,M4V,avi,AVI,3gp,3GP}" \
+      --exclude-from /tmp/excludes.txt \
       --transfers 2 --checkers 4 --retries 3 --low-level-retries 10 \
       --stats 0 --log-level NOTICE; then
     touch /data/.scan-request   # 사진 서버에 "새 사진 확인" 요청

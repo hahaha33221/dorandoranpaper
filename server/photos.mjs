@@ -95,6 +95,12 @@ export function setupPhotos(db, dataDir) {
     return `${m[1]}-${m[2]}-${m[3]} ${m[4] || "00"}:${m[5] || "00"}:${m[6] || "00"}`;
   }
 
+  // .env 로 조정 (개발자만): 빼고 싶은 폴더, 회차 번호 보정
+  //   PHOTOS_EXCLUDE="1회차 활동사진"        쉼표로 여러 개
+  //   PHOTOS_SESSION_OFFSET=-1               원드라이브 "2회차" → 사이트 "1회차"
+  const EXCLUDE = new Set(String(process.env.PHOTOS_EXCLUDE || "").split(",").map((s) => s.trim()).filter(Boolean));
+  const OFFSET = Number(process.env.PHOTOS_SESSION_OFFSET) || 0;
+
   function parseFolder(name) {
     let m = name.match(/^(\d{4})[-._ ]?(\d{1,2})[-._ ]?(\d{1,2})[\s_\-.)]*(.*)$/);
     if (!m) {
@@ -108,8 +114,9 @@ export function setupPhotos(db, dataDir) {
         return { date, title: (m[4] || "").trim() || "활동 사진", session: null };
       }
     }
-    const session = name.match(/(\d+)\s*회차/);
-    return { date: null, title: session ? `${Number(session[1])}회차` : name.trim(), session: session ? Number(session[1]) : null };
+    const m2 = name.match(/(\d+)\s*회차/);
+    const session = m2 ? Number(m2[1]) + OFFSET : null;
+    return { date: null, title: m2 ? `${session}회차` : name.trim(), session };
   }
 
   function listImages(dir) {
@@ -168,7 +175,7 @@ export function setupPhotos(db, dataDir) {
       status.tool ||= await detectTool();
       if (!status.tool) throw new Error("이미지 변환 도구(ImageMagick)가 없어요.");
 
-      const folders = readdirSync(SRC, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith("."));
+      const folders = readdirSync(SRC, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".") && !EXCLUDE.has(e.name));
       const seenSrc = new Set();
       const seenFolders = new Set();
       const work = [];

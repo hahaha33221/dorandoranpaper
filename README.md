@@ -89,6 +89,11 @@ ssh root@srv1809055.hstgr.cloud 'cd /opt/dorandoran && docker compose exec -T ap
 ssh root@srv1809055.hstgr.cloud 'docker logs --tail 5 dorandoran-photos-sync; docker logs --tail 5 dorandoran-api'
 ```
 
+**폴더 빼기 · 회차 번호 보정** (VPS `.env`, 개발자만)
+- `PHOTOS_EXCLUDE="1회차 활동사진"` — 이 폴더는 가져오지도, 보여 주지도 않음 (쉼표로 여러 개). 이미 받은 사본은 `data/photos-src/<폴더>` 를 지우면 정리됨
+- `PHOTOS_SESSION_OFFSET=-1` — 원드라이브 `2회차 활동사진` → 사이트 `1회차` (원드라이브 폴더 이름은 그대로, 다시 변환하지 않음)
+- 바꾼 뒤 `docker compose up -d`
+
 **준비 중 회차** (개발자만 조작): 멘티 화면에 `6회차 · 10월 20일 공개 예정` 같은 카드를 보여 줌.
 그 회차 폴더(`N회차 활동사진`)를 원드라이브에 올리고 가져오면 카드가 실제 앨범으로 바뀝니다.
 
