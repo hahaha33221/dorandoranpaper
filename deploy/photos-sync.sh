@@ -11,6 +11,7 @@ sync_once() {
   echo "[$(date '+%F %T')] 동기화 시작: $PHOTOS_REMOTE"
   if rclone sync "$PHOTOS_REMOTE" /data \
       --exclude ".*" --exclude "Thumbs.db" --exclude "desktop.ini" \
+      --exclude "*.{mov,MOV,mp4,MP4,m4v,M4V,avi,AVI,3gp,3GP}" \
       --transfers 2 --checkers 4 --retries 3 --low-level-retries 10 \
       --stats 0 --log-level NOTICE; then
     touch /data/.scan-request   # 사진 서버에 "새 사진 확인" 요청

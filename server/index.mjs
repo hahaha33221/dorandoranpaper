@@ -77,7 +77,7 @@ const q = {
   albums: db.prepare(`
     SELECT a.*, (SELECT count(*) FROM photos p WHERE p.album_id = a.id AND p.error IS NULL AND p.sig <> 'pending' AND (p.hidden = 0 OR ?)) AS count
     FROM albums a WHERE (a.hidden = 0 OR ?)
-    ORDER BY a.date IS NULL, a.date DESC, a.folder`),
+    ORDER BY a.date IS NULL, a.date DESC, a.session DESC, a.folder`),
   album: db.prepare("SELECT * FROM albums WHERE id = ? AND (hidden = 0 OR ?)"),
   albumPhotos: db.prepare(`
     SELECT id, width, height, taken_at, hidden FROM photos

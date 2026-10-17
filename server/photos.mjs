@@ -2,6 +2,7 @@
  * 사진첩: DATA_DIR/photos-src/<YYYY-MM-DD 활동명>/사진들  →  DB + 변환본(DATA_DIR/photos/<id>/)
  *
  * - 폴더 이름에서 날짜·활동명을 읽어 앨범을 만듭니다. (2026-10-12 쿠키 만들기 / 2026.10.12 / 261012 등)
+ *   "1회차 활동사진"처럼 날짜가 없으면, 사진들의 촬영일(없으면 파일 이름 속 날짜) 중 가장 많은 날을 앨범 날짜로 씀
  * - 새 사진·바뀐 사진만 변환: 목록용 t.webp(긴 변 480), 크게 보기·다운로드용 l.jpg(긴 변 1600)
  *   방향 바로잡기(-auto-orient), 촬영 정보·GPS 제거(-strip)
  * - 원본 폴더에서 지운 사진/폴더는 사이트에서도 지움
@@ -41,6 +42,9 @@ export function setupPhotos(db, dataDir) {
     );
     CREATE INDEX IF NOT EXISTS photos_album ON photos(album_id);
   `);
+  const albumCols = db.prepare("PRAGMA table_info(albums)").all().map((c) => c.name);
+  if (!albumCols.includes("session")) db.exec("ALTER TABLE albums ADD COLUMN session INTEGER");
+  if (!albumCols.includes("date_from_folder")) db.exec("ALTER TABLE albums ADD COLUMN date_from_folder INTEGER NOT NULL DEFAULT 1");
 
   const SRC = join(dataDir, "photos-src");
   const OUT = join(dataDir, "photos");
@@ -55,8 +59,14 @@ export function setupPhotos(db, dataDir) {
 
   const q = {
     albumByFolder: db.prepare("SELECT * FROM albums WHERE folder = ?"),
-    insertAlbum: db.prepare("INSERT INTO albums (folder, date, title) VALUES (?, ?, ?)"),
-    updateAlbumAuto: db.prepare("UPDATE albums SET date = ?, title = CASE WHEN title_custom = 1 THEN title ELSE ? END WHERE id = ?"),
+    insertAlbum: db.prepare("INSERT INTO albums (folder, date, title, session, date_from_folder) VALUES (?, ?, ?, ?, ?)"),
+    updateAlbumAuto: db.prepare(`UPDATE albums SET
+      date = CASE WHEN ? = 1 THEN ? ELSE date END, date_from_folder = ?, session = ?,
+      title = CASE WHEN title_custom = 1 THEN title ELSE ? END WHERE id = ?`),
+    albumsNeedingDate: db.prepare("SELECT id FROM albums WHERE date_from_folder = 0"),
+    commonDate: db.prepare(`SELECT substr(taken_at, 1, 10) AS d, count(*) AS n FROM photos
+      WHERE album_id = ? AND taken_at IS NOT NULL GROUP BY d ORDER BY n DESC, d LIMIT 1`),
+    setAlbumDate: db.prepare("UPDATE albums SET date = ? WHERE id = ?"),
     allAlbums: db.prepare("SELECT * FROM albums"),
     deleteAlbum: db.prepare("DELETE FROM albums WHERE id = ?"),
     photoBySrc: db.prepare("SELECT * FROM photos WHERE src = ?"),
@@ -76,6 +86,14 @@ export function setupPhotos(db, dataDir) {
     return null;
   }
 
+  // 파일 이름 속 날짜·시각: 20260509_143012.jpg, KakaoTalk_20260615_101233456_01.jpg, KakaoTalk_Photo_2026-10-15-12-30-45 001.jpeg
+  function dateFromName(file) {
+    const base = file.split("/").pop();
+    const m = base.match(/(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})(?:[-_ ]?(\d{2})[-_.]?(\d{2})[-_.]?(\d{2}))?/);
+    if (!m || +m[2] < 1 || +m[2] > 12 || +m[3] < 1 || +m[3] > 31) return null;
+    return `${m[1]}-${m[2]}-${m[3]} ${m[4] || "00"}:${m[5] || "00"}:${m[6] || "00"}`;
+  }
+
   function parseFolder(name) {
     let m = name.match(/^(\d{4})[-._ ]?(\d{1,2})[-._ ]?(\d{1,2})[\s_\-.)]*(.*)$/);
     if (!m) {
@@ -86,10 +104,11 @@ export function setupPhotos(db, dataDir) {
       const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
       if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
         const date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        return { date, title: (m[4] || "").trim() || "활동 사진" };
+        return { date, title: (m[4] || "").trim() || "활동 사진", session: null };
       }
     }
-    return { date: null, title: name };
+    const session = name.match(/(\d+)\s*회차/);
+    return { date: null, title: name.trim(), session: session ? Number(session[1]) : null };
   }
 
   function listImages(dir) {
@@ -130,6 +149,14 @@ export function setupPhotos(db, dataDir) {
     return { takenAt, width, height };
   }
 
+  // 폴더 이름에 날짜가 없는 앨범: 사진 날짜 중 가장 많은 날
+  function fillAlbumDates() {
+    for (const { id } of q.albumsNeedingDate.all()) {
+      const r = q.commonDate.get(id);
+      if (r?.d) q.setAlbumDate.run(r.d, id);
+    }
+  }
+
   async function scan() {
     if (status.running) return status;
     status.running = true;
@@ -146,10 +173,11 @@ export function setupPhotos(db, dataDir) {
       const work = [];
 
       for (const f of folders) {
-        const { date, title } = parseFolder(f.name);
+        const { date, title, session } = parseFolder(f.name);
+        const fromFolder = date ? 1 : 0;
         let album = q.albumByFolder.get(f.name);
-        if (!album) album = { id: Number(q.insertAlbum.run(f.name, date, title).lastInsertRowid) };
-        else q.updateAlbumAuto.run(date, title, album.id);
+        if (!album) album = { id: Number(q.insertAlbum.run(f.name, date, title, session, fromFolder).lastInsertRowid) };
+        else q.updateAlbumAuto.run(fromFolder, date, fromFolder, session, title, album.id);
         seenFolders.add(f.name);
 
         for (const file of listImages(join(SRC, f.name))) {
@@ -179,14 +207,16 @@ export function setupPhotos(db, dataDir) {
         if (!id) id = Number(q.insertPhoto.run(w.albumId, w.rel, "pending", null, null, null, null).lastInsertRowid);
         try {
           const meta = await convert(status.tool, w.file, join(OUT, String(id)));
-          q.updatePhoto.run(w.albumId, w.sig, meta.takenAt, meta.width, meta.height, null, id);
+          q.updatePhoto.run(w.albumId, w.sig, meta.takenAt || dateFromName(w.rel), meta.width, meta.height, null, id);
           status.processed++;
         } catch (e) {
           q.updatePhoto.run(w.albumId, w.sig, null, null, null, String(e.message || e).slice(0, 300), id);
           status.failed++;
         }
         status.pending--;
+        if (status.processed % 20 === 0) fillAlbumDates();
       }
+      fillAlbumDates();
       if (work.length) console.log(`[photos] 변환 ${status.processed}장, 실패 ${status.failed}장`);
     } catch (e) {
       status.lastError = String(e.message || e);
