@@ -12,6 +12,7 @@ import { createReadStream, statSync, watch } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import crypto from "node:crypto";
 import { openDb, importSeed, verifyPassword, hashPassword } from "./db.mjs";
+import { setupPhotos } from "./photos.mjs";
 
 const PORT = Number(process.env.PORT) || 8787;
 const DATA_DIR = resolve(process.env.DATA_DIR || "data");
@@ -27,6 +28,7 @@ const MAX_BODY = 64 * 1024;
 const db = openDb(join(DATA_DIR, "doran.db"));
 const seeded = importSeed(db, join(DATA_DIR, "seed.json"));
 if (seeded) console.log(`seed.json 반영: 계정 ${seeded.users}개, 새 편지 ${seeded.letters}통`);
+const photos = setupPhotos(db, DATA_DIR);
 
 const q = {
   userByLogin: db.prepare("SELECT * FROM users WHERE login = ?"),
@@ -70,7 +72,26 @@ const q = {
   upsertLetter: db.prepare(`
     INSERT INTO letters (mentor_id, mentee_id, body, updated_at) VALUES (?, ?, ?, datetime('now'))
     ON CONFLICT(mentor_id, mentee_id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at`),
-  deleteLetter: db.prepare("DELETE FROM letters WHERE mentor_id = ? AND mentee_id = ?")
+  deleteLetter: db.prepare("DELETE FROM letters WHERE mentor_id = ? AND mentee_id = ?"),
+  // 사진첩 (ready = 변환 끝, 오류 없음)
+  albums: db.prepare(`
+    SELECT a.*, (SELECT count(*) FROM photos p WHERE p.album_id = a.id AND p.error IS NULL AND p.sig <> 'pending' AND (p.hidden = 0 OR ?)) AS count
+    FROM albums a WHERE (a.hidden = 0 OR ?)
+    ORDER BY a.date IS NULL, a.date DESC, a.folder`),
+  album: db.prepare("SELECT * FROM albums WHERE id = ? AND (hidden = 0 OR ?)"),
+  albumPhotos: db.prepare(`
+    SELECT id, width, height, taken_at, hidden FROM photos
+    WHERE album_id = ? AND error IS NULL AND sig <> 'pending' AND (hidden = 0 OR ?)
+    ORDER BY taken_at IS NULL, taken_at, src`),
+  photoForFile: db.prepare(`
+    SELECT p.id, p.album_id, a.date, a.title, a.hidden AS album_hidden, p.hidden FROM photos p
+    JOIN albums a ON a.id = p.album_id WHERE p.id = ?`),
+  photoErrors: db.prepare("SELECT count(*) AS n FROM photos WHERE error IS NOT NULL"),
+  setAlbum: db.prepare(`UPDATE albums SET
+    title = COALESCE(?, title), title_custom = CASE WHEN ? IS NULL THEN title_custom ELSE 1 END,
+    description = COALESCE(?, description), hidden = COALESCE(?, hidden), cover_id = COALESCE(?, cover_id)
+    WHERE id = ?`),
+  setPhotoHidden: db.prepare("UPDATE photos SET hidden = ? WHERE id = ?")
 };
 
 /* ---------- 로그인 시도 제한 (IP별, 아이디별) ---------- */
@@ -153,6 +174,31 @@ async function api(req, res, path) {
 
   if (path === "/api/health" && method === "GET") return send(res, 200, { ok: true });
 
+  // 사진 파일 (서명된 주소로만, <img> 는 로그인 헤더를 못 보내므로)
+  const pm = path.match(/^\/api\/photos\/(\d+)\/([tl])$/);
+  if (pm && method === "GET") {
+    const url = new URL(req.url, "http://localhost");
+    const [id, size] = [Number(pm[1]), pm[2]];
+    if (!photos.verify(id, size, url.searchParams.get("e"), url.searchParams.get("s"))) return send(res, 403, { error: "만료된 주소예요. 새로고침해 주세요." });
+    const file = photos.filePath(id, size);
+    let st;
+    try { st = statSync(file); } catch { return send(res, 404, { error: "사진이 없어요." }); }
+    const headers = {
+      "Content-Type": photos.SIZES[size].type,
+      "Content-Length": st.size,
+      "Cache-Control": "private, max-age=21600",
+      "X-Content-Type-Options": "nosniff"
+    };
+    if (url.searchParams.get("d") === "1") {
+      const p = q.photoForFile.get(id);
+      const n = p ? q.albumPhotos.all(p.album_id, 1).findIndex((x) => x.id === id) + 1 : id;
+      const name = `${p?.date || "사진"}_${(p?.title || "").replace(/[\\/:*?"<>|\s]+/g, "_")}_${String(n).padStart(2, "0")}.jpg`;
+      headers["Content-Disposition"] = `attachment; filename="photo.jpg"; filename*=UTF-8''${encodeURIComponent(name)}`;
+    }
+    res.writeHead(200, headers);
+    return createReadStream(file).pipe(res);
+  }
+
   if (path === "/api/login" && method === "POST") {
     const { login, password } = await readJson(req);
     const id = normalizeLogin(login);
@@ -201,6 +247,37 @@ async function api(req, res, path) {
     return send(res, 200, { ok: true });
   }
 
+  /* ----- 사진첩 (멘티, 관리자) ----- */
+  if (path === "/api/albums" || path.startsWith("/api/albums/")) {
+    if (user.role !== "mentee" && user.role !== "admin") return send(res, 403, { error: "사진첩은 멘티만 볼 수 있어요." });
+    const isAdmin = user.role === "admin" ? 1 : 0;
+    const photoOut = (p) => ({
+      id: p.id, w: p.width, h: p.height, takenAt: p.taken_at, hidden: !!p.hidden,
+      thumb: photos.url(p.id, "t"), large: photos.url(p.id, "l"), download: photos.url(p.id, "l") + "&d=1"
+    });
+    if (path === "/api/albums" && method === "GET") {
+      const albums = q.albums.all(isAdmin, isAdmin).filter((a) => isAdmin || a.count > 0).map((a) => {
+        const list = q.albumPhotos.all(a.id, 0);
+        const cover = list.find((p) => p.id === a.cover_id) || list[0];
+        const previews = [cover, ...list.filter((p) => p !== cover)].filter(Boolean).slice(0, 4).map((p) => photos.url(p.id, "t"));
+        return { id: a.id, date: a.date, title: a.title, description: a.description, count: a.count, previews, hidden: !!a.hidden, folder: isAdmin ? a.folder : undefined };
+      });
+      const out = { albums };
+      if (isAdmin) out.status = { ...photos.status, errors: q.photoErrors.get().n };
+      return send(res, 200, out);
+    }
+    const am = path.match(/^\/api\/albums\/(\d+)$/);
+    if (am && method === "GET") {
+      const a = q.album.get(Number(am[1]), isAdmin);
+      if (!a) return send(res, 404, { error: "앨범을 찾을 수 없어요." });
+      return send(res, 200, {
+        album: { id: a.id, date: a.date, title: a.title, description: a.description, hidden: !!a.hidden, coverId: a.cover_id },
+        photos: q.albumPhotos.all(a.id, isAdmin).map(photoOut)
+      });
+    }
+    return send(res, 404, { error: "Not found" });
+  }
+
   /* ----- 관리자 ----- */
   if (path.startsWith("/api/admin/")) {
     if (user.role !== "admin") return send(res, 403, { error: "관리자만 볼 수 있어요." });
@@ -237,6 +314,28 @@ async function api(req, res, path) {
       q.delUserSessions.run(target.id);
       console.log(`[admin] ${user.name} → ${target.login} 임시 비밀번호 발급`);
       return send(res, 200, { login: target.login, name: target.full_name, password: temp });
+    }
+
+    // 사진첩 관리
+    const aa = path.match(/^\/api\/admin\/albums\/(\d+)$/);
+    if (aa && method === "PATCH") {
+      const b = await readJson(req);
+      const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : null);
+      const title = str(b.title, 60);
+      q.setAlbum.run(title || null, title || null, str(b.description, 300), typeof b.hidden === "boolean" ? Number(b.hidden) : null,
+        Number.isInteger(b.coverId) ? b.coverId : null, Number(aa[1]));
+      return send(res, 200, { ok: true });
+    }
+    const ap = path.match(/^\/api\/admin\/photos\/(\d+)$/);
+    if (ap && method === "PATCH") {
+      const b = await readJson(req);
+      if (typeof b.hidden !== "boolean") return send(res, 400, { error: "잘못된 요청이에요." });
+      q.setPhotoHidden.run(Number(b.hidden), Number(ap[1]));
+      return send(res, 200, { ok: true });
+    }
+    if (path === "/api/admin/photos/scan" && method === "POST") {
+      photos.scan(); // 백그라운드
+      return send(res, 202, { ok: true });
     }
 
     return send(res, 404, { error: "Not found" });

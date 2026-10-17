@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node tools/dev.mjs",
     "seed": "node --disable-warning=ExperimentalWarning tools/seed.mjs",
-    "start": "node --disable-warning=ExperimentalWarning server/index.mjs"
+    "start": "node --disable-warning=ExperimentalWarning server/index.mjs",
+    "photos:sync": "node tools/photos-sync.mjs"
   },
   "engines": {
     "node": ">=22.13"

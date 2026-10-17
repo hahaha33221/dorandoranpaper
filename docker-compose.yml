@@ -19,7 +19,7 @@ services:
     volumes:
       - ./data:/app/data # SQLite DB + seed.json
     networks: [dorandoran]
-    mem_limit: 256m
+    mem_limit: 512m # 사진 변환 여유
     cpus: 0.5
     logging:
       driver: json-file

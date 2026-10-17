@@ -71,6 +71,22 @@
     </form>
   </div>
 
+  <!-- 사진 크게 보기 -->
+  <div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="사진 보기" hidden>
+    <div class="viewer__bar">
+      <span class="viewer__count" id="viewer-count" aria-live="polite"></span>
+      <a class="viewer__download" id="viewer-download" href="#" download>⬇︎ 저장</a>
+      <button class="viewer__close" type="button" aria-label="닫기">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </div>
+    <div class="viewer__stage">
+      <img class="viewer__img" id="viewer-img" alt="" />
+    </div>
+    <button class="viewer__nav viewer__prev" type="button" aria-label="이전 사진">‹</button>
+    <button class="viewer__nav viewer__next" type="button" aria-label="다음 사진">›</button>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

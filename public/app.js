@@ -135,9 +135,10 @@
     closeModal();
     closeEditor(true);
     hideDialog(pwDialog);
+    closeViewer();
     window.removeEventListener("resize", onPuzzleResize);
     const route = location.hash;
-    if ((route === "#/letters" || route === "#/write" || route === "#/admin") && !current && store.get(TOKEN_KEY, "")) {
+    if (route.length > 2 && !current && store.get(TOKEN_KEY, "")) {
       try { current = { user: (await request("GET", "/me")).user }; } catch (e) { current = null; }
     }
     app.replaceChildren();
@@ -145,6 +146,11 @@
       if (current && current.user.role === "mentee" && route === "#/letters") {
         const data = await request("GET", "/letters");
         renderLetters({ id: data.name, name: data.name, letters: data.letters });
+        promptPasswordChange();
+      } else if (current && (current.user.role === "mentee" || current.user.role === "admin") && /^#\/photos(\/\d+)?$/.test(route)) {
+        const albumId = route.split("/")[2];
+        if (albumId) renderAlbum(await request("GET", "/albums/" + albumId));
+        else renderPhotos(await request("GET", "/albums"));
         promptPasswordChange();
       } else if (current && current.user.role === "admin" && route === "#/admin") {
         renderAdmin(await request("GET", "/admin/overview"));
@@ -258,6 +264,204 @@
     );
     setTimeout(() => idInput.focus({ preventScroll: true }), 50);
   }
+
+  /* ---------- 상단 메뉴: 편지 / 사진첩 (멘티), 현황 / 사진첩 (관리자) ---------- */
+  function sectionNav(active) {
+    const isAdmin = current && current.user.role === "admin";
+    const items = isAdmin
+      ? [["#/admin", "📊 현황"], ["#/photos", "📷 사진첩"]]
+      : [["#/letters", "💌 편지"], ["#/photos", "📷 사진첩"]];
+    return h("nav", { class: "section-nav", "aria-label": "메뉴" },
+      items.map(([href, label]) => h("a", {
+        href, text: label, class: active.startsWith(href) ? "is-active" : null,
+        "aria-current": active.startsWith(href) ? "page" : null
+      }))
+    );
+  }
+
+  /* ---------- 사진첩 ---------- */
+  const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"];
+  function albumDate(d) {
+    if (!d) return "";
+    const [y, m, day] = d.split("-").map(Number);
+    const wd = WEEKDAY[new Date(y, m - 1, day).getDay()];
+    return `${m}월 ${day}일 (${wd})`;
+  }
+
+  function renderPhotos(data) {
+    document.title = "사진첩 · " + TITLE;
+    const isAdmin = current.user.role === "admin";
+    const albums = data.albums;
+    const list = h("div", { class: "timeline" });
+
+    if (!albums.length) {
+      list.append(h("p", { class: "empty", text: isAdmin ? "아직 올라온 사진이 없어요. npm run photos:sync 로 사진 폴더를 보내 주세요." : "아직 올라온 사진이 없어요." }));
+    }
+
+    // 월별로 묶기
+    const groups = [];
+    for (const a of albums) {
+      const key = a.date ? a.date.slice(0, 7) : "etc";
+      let g = groups[groups.length - 1];
+      if (!g || g.key !== key) groups.push((g = { key, items: [] }));
+      g.items.push(a);
+    }
+    const monthLabel = (key) => key === "etc" ? "날짜 없음" : `${Number(key.slice(0, 4))}년 ${Number(key.slice(5))}월`;
+
+    const jump = groups.length > 1 ? h("nav", { class: "month-jump", "aria-label": "월 바로가기" },
+      groups.map((g) => h("a", { href: "#", text: monthLabel(g.key).replace(/^\d+년 /, ""), onclick: (e) => {
+        e.preventDefault();
+        document.getElementById("m-" + g.key)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } }))) : null;
+
+    for (const g of groups) {
+      list.append(h("h2", { class: "month", id: "m-" + g.key, text: monthLabel(g.key) }));
+      list.append(h("ul", { class: "albums" }, g.items.map((a, i) =>
+        h("li", null, h("a", { class: "album-card" + (a.hidden ? " is-hidden" : ""), href: "#/photos/" + a.id }, [
+          h("div", { class: "polaroids", "aria-hidden": "true" },
+            (a.previews.length ? a.previews.slice(0, 3) : [null]).map((src, k) =>
+              h("span", { class: "polaroid", style: `--r:${[-5, 4, -2][k] * (i % 2 ? -1 : 1)}deg; --z:${3 - k}` },
+                src ? h("img", { src, alt: "", loading: "lazy", decoding: "async" }) : h("i", { text: "📷" })))),
+          h("div", { class: "album-card__text" }, [
+            a.date ? h("p", { class: "album-card__date", text: albumDate(a.date) }) : null,
+            h("p", { class: "album-card__title", text: a.title }),
+            h("p", { class: "album-card__count", text: `사진 ${a.count}장` + (a.hidden ? " · 숨김" : "") })
+          ])
+        ]))
+      )));
+    }
+
+    let adminBar = null;
+    if (isAdmin) {
+      const st = data.status || {};
+      const parts = [
+        st.running ? "새 사진 확인 중…" : st.lastRunAt ? `마지막 확인 ${ago(st.lastRunAt.replace("T", " ").slice(0, 19))}` : "아직 확인 전",
+        st.pending ? `변환 대기 ${st.pending}장` : null,
+        st.errors ? `변환 실패 ${st.errors}장` : null,
+        st.lastError ? `오류: ${st.lastError}` : null
+      ].filter(Boolean);
+      adminBar = h("div", { class: "admin-bar" }, [
+        h("span", { text: parts.join(" · ") }),
+        h("button", { class: "linkish", type: "button", text: "지금 확인", onclick: async (e) => {
+          e.currentTarget.disabled = true;
+          try { await request("POST", "/admin/photos/scan"); } catch (err) { alert(err.message); }
+          setTimeout(render, 2500);
+        } })
+      ]);
+    }
+
+    app.append(h("section", { class: "page" }, [
+      frame([h("div", { class: "letters photos" }, [
+        sectionNav("#/photos"),
+        h("h1", { class: "title title--name", text: "사진첩" }),
+        adminBar, jump, list
+      ])])
+    ]));
+  }
+
+  function renderAlbum(data) {
+    const { album, photos } = data;
+    const isAdmin = current.user.role === "admin";
+    document.title = album.title + " · 사진첩 · " + TITLE;
+    const grid = h("ul", { class: "photo-grid" });
+
+    function drawGrid() {
+      grid.replaceChildren(...photos.map((p, i) => h("li", { class: p.hidden ? "is-hidden" : null }, [
+        h("button", { class: "thumb", type: "button", "aria-label": `${i + 1}번째 사진 크게 보기`, onclick: (e) => openViewer(photos, i, e.currentTarget) },
+          h("img", { src: p.thumb, alt: "", loading: "lazy", decoding: "async", width: 240, height: 240 })),
+        isAdmin ? h("div", { class: "thumb__tools" }, [
+          h("button", { type: "button", text: p.hidden ? "보이기" : "숨기기", onclick: async () => {
+            try { await request("PATCH", "/admin/photos/" + p.id, { hidden: !p.hidden }); p.hidden = !p.hidden; drawGrid(); }
+            catch (err) { alert(err.message); }
+          } }),
+          h("button", { type: "button", text: album.coverId === p.id ? "★ 대표" : "대표로", onclick: async () => {
+            try { await request("PATCH", "/admin/albums/" + album.id, { coverId: p.id }); album.coverId = p.id; drawGrid(); }
+            catch (err) { alert(err.message); }
+          } })
+        ]) : null
+      ])));
+    }
+    drawGrid();
+
+    let editor = null;
+    if (isAdmin) {
+      const title = h("input", { type: "text", value: album.title, maxlength: 60, "aria-label": "앨범 제목" });
+      const desc = h("input", { type: "text", value: album.description, maxlength: 300, placeholder: "한 줄 설명 (선택)", "aria-label": "앨범 설명" });
+      const hidden = h("input", { type: "checkbox" }); hidden.checked = album.hidden;
+      const msg = h("span", { class: "album-edit__msg", role: "status" });
+      editor = h("form", { class: "album-edit", onsubmit: async (e) => {
+        e.preventDefault();
+        try {
+          await request("PATCH", "/admin/albums/" + album.id, { title: title.value, description: desc.value, hidden: hidden.checked });
+          msg.textContent = "저장했어요";
+        } catch (err) { msg.textContent = err.message; }
+      } }, [
+        title, desc,
+        h("label", { class: "album-edit__hide" }, [hidden, " 멘티에게 숨기기"]),
+        h("button", { class: "pill", type: "submit", text: "저장" }), msg
+      ]);
+    }
+
+    app.append(h("section", { class: "page" }, [
+      frame([h("div", { class: "letters photos" }, [
+        sectionNav("#/photos"),
+        h("a", { class: "crumb", href: "#/photos", text: "← 사진첩" }),
+        album.date ? h("p", { class: "album-head__date", text: albumDate(album.date) }) : null,
+        h("h1", { class: "title title--album", text: album.title }),
+        album.description ? h("p", { class: "album-head__desc", text: album.description }) : null,
+        h("p", { class: "album-head__count", text: `사진 ${photos.length}장 · 사진을 누르면 크게 볼 수 있어요` }),
+        editor,
+        photos.length ? grid : h("p", { class: "empty", text: "사진이 아직 없어요." })
+      ])])
+    ]));
+  }
+
+  /* 사진 크게 보기 (넘기기·다운로드) */
+  const viewer = document.getElementById("viewer");
+  const viewerImg = document.getElementById("viewer-img");
+  const viewerCount = document.getElementById("viewer-count");
+  const viewerDownload = document.getElementById("viewer-download");
+  let viewing = null; // { list, index }
+
+  function showPhoto(i) {
+    const { list } = viewing;
+    viewing.index = (i + list.length) % list.length;
+    const p = list[viewing.index];
+    viewerImg.classList.add("is-loading");
+    viewerImg.onload = () => viewerImg.classList.remove("is-loading");
+    viewerImg.src = p.large;
+    viewerImg.alt = `${viewing.index + 1}번째 사진`;
+    viewerCount.textContent = `${viewing.index + 1} / ${list.length}`;
+    viewerDownload.href = p.download;
+    // 다음 사진 미리 불러오기
+    const next = list[(viewing.index + 1) % list.length];
+    if (next) new Image().src = next.large;
+  }
+  function openViewer(list, index, trigger) {
+    viewing = { list, index };
+    showDialog(viewer, trigger, viewer.querySelector(".viewer__close"));
+    showPhoto(index);
+  }
+  function closeViewer() {
+    if (viewer.hidden) return;
+    viewing = null;
+    viewerImg.removeAttribute("src");
+    hideDialog(viewer);
+  }
+  viewer.querySelector(".viewer__prev").addEventListener("click", () => showPhoto(viewing.index - 1));
+  viewer.querySelector(".viewer__next").addEventListener("click", () => showPhoto(viewing.index + 1));
+  viewer.querySelector(".viewer__close").addEventListener("click", closeViewer);
+  viewer.addEventListener("click", (e) => { if (e.target === viewer || e.target.classList.contains("viewer__stage")) closeViewer(); });
+  // 손가락으로 넘기기
+  let touchX = null, touchY = null;
+  viewer.addEventListener("touchstart", (e) => { touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; }, { passive: true });
+  viewer.addEventListener("touchend", (e) => {
+    if (touchX === null || !viewing) return;
+    const dx = e.changedTouches[0].clientX - touchX, dy = e.changedTouches[0].clientY - touchY;
+    touchX = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) showPhoto(viewing.index + (dx < 0 ? 1 : -1));
+    else if (dy > 90 && Math.abs(dy) > Math.abs(dx)) closeViewer();
+  });
 
   /* ---------- 관리자: 전체 현황 ---------- */
   const ADMIN_TAB_KEY = "doran:admin-tab";
@@ -402,6 +606,7 @@
       h("section", { class: "page" }, [
         frame([
           h("div", { class: "letters admin" }, [
+            sectionNav("#/admin"),
             h("h1", { class: "title title--name", text: "전체 현황" }),
             updated,
             stats,
@@ -511,7 +716,7 @@
 
     app.append(
       h("section", { class: "page" }, [
-        frame([h("div", { class: "letters" }, [h("h1", { class: "title title--name", text: student.name }), tabs, body])])
+        frame([h("div", { class: "letters" }, [sectionNav("#/letters"), h("h1", { class: "title title--name", text: student.name }), tabs, body])])
       ])
     );
     setView(view);
@@ -647,7 +852,7 @@
   function hideDialog(el) {
     if (el.hidden) return;
     el.hidden = true;
-    if (modal.hidden && editor.hidden && pwDialog.hidden) document.body.classList.remove("is-locked");
+    if (modal.hidden && editor.hidden && pwDialog.hidden && viewer.hidden) document.body.classList.remove("is-locked");
     if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
   }
 
@@ -786,9 +991,14 @@
     });
   }
   document.addEventListener("keydown", (e) => {
-    const dlg = !pwDialog.hidden ? pwDialog : !editor.hidden ? editor : !modal.hidden ? modal : null;
+    if (!viewer.hidden && viewing) {
+      if (e.key === "Escape") return closeViewer();
+      if (e.key === "ArrowLeft") return showPhoto(viewing.index - 1);
+      if (e.key === "ArrowRight") return showPhoto(viewing.index + 1);
+    }
+    const dlg = !viewer.hidden ? viewer : !pwDialog.hidden ? pwDialog : !editor.hidden ? editor : !modal.hidden ? modal : null;
     if (!dlg) return;
-    if (e.key === "Escape") { dlg === editor ? closeEditor() : dlg === pwDialog ? closePassword() : closeModal(); return; }
+    if (e.key === "Escape") { dlg === editor ? closeEditor() : dlg === pwDialog ? closePassword() : dlg === viewer ? closeViewer() : closeModal(); return; }
     if (e.key === "Tab") {
       const items = [...dlg.querySelectorAll("button:not([disabled]), textarea, input, [tabindex]:not([tabindex='-1'])")]
         .filter((el) => el.offsetParent !== null);
