@@ -78,12 +78,26 @@ VPS 가 원드라이브 사진첩 폴더를 **직접** 가져옵니다 (Mac 저�
 
 로그: `docker logs dorandoran-photos-sync`
 
-**가져오는 방식** (VPS `.env` 의 `PHOTOS_INTERVAL`)
-- `0` (지금 설정): 자동으로 가져오지 않고, 마스터 📷 사진첩 화면의 **원드라이브에서 가져오기** 버튼을 누를 때만 한 번 가져옴
+**가져오는 방식** (VPS `.env` 의 `PHOTOS_INTERVAL`) — 개발자만 조작
+- `0` (지금 설정): 자동으로 가져오지 않음. 원드라이브에 사진을 올린 뒤 아래 명령으로 한 번 가져오기
 - `1800`: 30분마다 자동
 
-**준비 중 회차**: 마스터 📷 사진첩 화면에서 회차 번호와 안내 문구(예: `10월 20일 공개 예정`, 비우면 `준비 중`)를 넣으면 멘티 화면에 카드로 보입니다.
+```bash
+# 원드라이브에서 지금 가져오기 (가져온 뒤 자동으로 변환)
+ssh root@srv1809055.hstgr.cloud 'cd /opt/dorandoran && docker compose exec -T api sh -c "date > /app/data/photos-src/.sync-now"'
+# 진행 확인
+ssh root@srv1809055.hstgr.cloud 'docker logs --tail 5 dorandoran-photos-sync; docker logs --tail 5 dorandoran-api'
+```
+
+**준비 중 회차** (개발자만 조작): 멘티 화면에 `6회차 · 10월 20일 공개 예정` 같은 카드를 보여 줌.
 그 회차 폴더(`N회차 활동사진`)를 원드라이브에 올리고 가져오면 카드가 실제 앨범으로 바뀝니다.
+
+```bash
+# 설정 (예: 6회차 → 10월 20일 공개 예정 / 여러 개면 배열에 추가, 비우려면 [])
+ssh root@srv1809055.hstgr.cloud 'cd /opt/dorandoran && docker compose exec -T api node --disable-warning=ExperimentalWarning -e "
+const {DatabaseSync}=require(\"node:sqlite\"); const d=new DatabaseSync(\"/app/data/doran.db\");
+d.prepare(\"INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value\").run(\"upcoming_sessions\", JSON.stringify([{session:6,label:\"10월 20일 공개 예정\"}]));"'
+```
 
 ### 사진 올리기 (Mac 폴더에서 직접 보낼 때)
 
@@ -117,7 +131,7 @@ npm run photos:sync -- "$HOME/Library/CloudStorage/OneDrive-개인/도란도란 
 
 ### 관리자
 
-- 📷 사진첩: 마지막 확인 시각, 변환 대기·실패 수, **지금 확인** 버튼
+- 📷 사진첩: 앨범마다 원드라이브 원본 수와 변환 중인 수 표시
 - 앨범 안: 제목·한 줄 설명 수정, **멘티에게 숨기기**, 사진별 **숨기기 / 대표로** (원드라이브 원본은 그대로)
 
 ## 비밀번호

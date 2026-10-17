@@ -401,61 +401,11 @@
       ]))
     )));
 
-    let adminBar = null;
-    if (isAdmin) {
-      const st = data.status || {};
-      const parts = [
-        st.lastSyncAt ? `원드라이브에서 가져옴 ${ago(st.lastSyncAt.replace("T", " ").slice(0, 19))}` : null,
-        st.lastSyncErrorAt && (!st.lastSyncAt || st.lastSyncErrorAt > st.lastSyncAt) ? "⚠︎ 원드라이브 연결 오류" : null,
-        st.running ? "새 사진 변환 중…" : st.lastRunAt ? `마지막 확인 ${ago(st.lastRunAt.replace("T", " ").slice(0, 19))}` : "아직 확인 전",
-        st.pending ? `변환 대기 ${st.pending}장` : null,
-        st.errors ? `변환 실패 ${st.errors}장` : null,
-        st.lastError ? `오류: ${st.lastError}` : null
-      ].filter(Boolean);
-      adminBar = h("div", { class: "admin-bar" }, [
-        h("span", { text: parts.join(" · ") }),
-        h("button", { class: "linkish", type: "button", text: "원드라이브에서 가져오기", onclick: async (e) => {
-          e.currentTarget.disabled = true;
-          e.currentTarget.textContent = "가져오는 중… (몇 분 뒤 새로고침)";
-          try { await request("POST", "/admin/photos/scan"); } catch (err) { alert(err.message); }
-        } })
-      ]);
-      // 준비 중 회차: 회차 번호 + 안내 문구 (예: 6 / 10월 20일 공개 예정)
-      const rows = h("div", { class: "upcoming-rows" });
-      const upMsg = h("span", { class: "album-edit__msg", role: "status" });
-      function addRow(item) {
-        const num = h("input", { type: "text", inputmode: "numeric", value: item ? String(item.session) : "", placeholder: "회차", "aria-label": "회차 번호", class: "upcoming-num" });
-        const label = h("input", { type: "text", value: item ? item.label : "", placeholder: "준비 중", maxlength: 30, "aria-label": "안내 문구", class: "upcoming-label" });
-        const row = h("div", { class: "upcoming-row" }, [num, h("span", { text: "회차" }), label,
-          h("button", { type: "button", class: "linkish", text: "삭제", onclick: () => row.remove() })]);
-        rows.append(row);
-      }
-      (data.upcoming || []).forEach(addRow);
-      if (!rows.children.length) addRow(null);
-      adminBar = h("div", null, [adminBar, h("form", { class: "upcoming-edit", onsubmit: async (e) => {
-        e.preventDefault();
-        const items = [...rows.children].map((r) => ({
-          session: Number(r.querySelector(".upcoming-num").value.replace(/[^0-9]/g, "")),
-          label: r.querySelector(".upcoming-label").value
-        })).filter((it) => it.session > 0);
-        try { await request("PUT", "/admin/settings/upcoming", { items }); upMsg.textContent = "저장했어요"; setTimeout(render, 600); }
-        catch (err) { upMsg.textContent = err.message; }
-      } }, [
-        h("p", { class: "upcoming-edit__title", text: "아직 사진이 없는 회차 안내 (멘티 화면에 카드로 보여요)" }),
-        rows,
-        h("div", { class: "upcoming-edit__actions" }, [
-          h("button", { type: "button", class: "linkish", text: "+ 회차 추가", onclick: () => addRow(null) }),
-          h("button", { type: "submit", class: "linkish", text: "저장" }),
-          upMsg
-        ])
-      ])]);
-    }
-
     app.append(h("section", { class: "page" }, [
       frame([h("div", { class: "letters photos" }, [
         sectionNav("#/photos"),
         h("h1", { class: "title title--name", text: "사진첩" }),
-        adminBar, list
+        list
       ])])
     ]));
   }
