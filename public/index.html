@@ -87,6 +87,21 @@
     <button class="viewer__nav viewer__next" type="button" aria-label="다음 사진">›</button>
   </div>
 
+  <!-- 확인 창 (로그아웃 등) -->
+  <div class="modal" id="confirm" hidden>
+    <div class="modal__backdrop"></div>
+    <div class="letter letter--modal letter--confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+      <h2 class="letter__from" id="confirm-title"></h2>
+      <div class="letter__body confirm__body">
+        <p id="confirm-text"></p>
+        <div class="confirm__actions">
+          <button class="pill confirm__cancel" id="confirm-cancel" type="button"></button>
+          <button class="pill confirm__ok" id="confirm-ok" type="button"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

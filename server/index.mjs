@@ -19,7 +19,7 @@ const DATA_DIR = resolve(process.env.DATA_DIR || "data");
 const STATIC_DIR = process.env.STATIC_DIR ? resolve(process.env.STATIC_DIR) : null;
 const DEV = process.env.DEV === "1";
 
-const SESSION_HOURS = { mentee: 12, mentor: 24 * 7, admin: 12 };
+const SESSION_HOURS = 24; // 로그인 유지 시간 (모든 계정 공통, 지나면 자동 로그아웃)
 const MAX_LETTER = 5000;
 const PASSWORD_MIN = 6, PASSWORD_MAX = 64;
 const SENDER_SUFFIX = " 선생님"; // 보낸 사람 이름 뒤 호칭
@@ -29,6 +29,8 @@ const db = openDb(join(DATA_DIR, "doran.db"));
 const seeded = importSeed(db, join(DATA_DIR, "seed.json"));
 if (seeded) console.log(`seed.json 반영: 계정 ${seeded.users}개, 새 편지 ${seeded.letters}통`);
 const photos = setupPhotos(db, DATA_DIR);
+// 예전에 더 길게 잡힌 로그인(멘토 7일 등)도 지금부터 최대 24시간으로
+db.prepare("UPDATE sessions SET expires_at = min(expires_at, ?)").run(Date.now() + SESSION_HOURS * 3600 * 1000);
 
 const q = {
   userByLogin: db.prepare("SELECT * FROM users WHERE login = ?"),
@@ -211,9 +213,10 @@ async function api(req, res, path) {
       return send(res, 401, { error: "아이디 또는 비밀번호를 다시 확인해 주세요." });
     }
     const token = crypto.randomBytes(32).toString("base64url");
-    q.addSession.run(sha256(token), user.id, Date.now() + SESSION_HOURS[user.role] * 3600 * 1000);
+    const expiresAt = Date.now() + SESSION_HOURS * 3600 * 1000;
+    q.addSession.run(sha256(token), user.id, expiresAt);
     q.touchLogin.run(user.id);
-    return send(res, 200, { token, user: publicUser(user) });
+    return send(res, 200, { token, expiresAt, user: publicUser(user) });
   }
 
   const user = auth(req);

@@ -75,7 +75,7 @@
 
   function frame(children) {
     const svg = '<svg class="frame__border" aria-hidden="true"><rect x="1.5" y="1.5" width="100%" height="100%" rx="18" ry="18" style="width:calc(100% - 3px);height:calc(100% - 3px)"/></svg>';
-    const back = h("button", { class: "back", type: "button", "aria-label": "나가기", html: ICON_BACK, onclick: logout });
+    const back = h("button", { class: "back", type: "button", "aria-label": "로그아웃", html: ICON_BACK, onclick: onBackButton });
     const key = h("button", {
       class: "account", type: "button", "aria-label": "비밀번호 변경", title: "비밀번호 변경",
       html: ICON_KEY, onclick: (e) => openPassword(e.currentTarget)
@@ -85,11 +85,45 @@
   }
 
   /* ---------- API / 세션 ---------- */
+  // 로그인은 24시간 유지 (탭을 닫았다 열어도 유지, 24시간이 지나면 자동으로 풀림)
   const TOKEN_KEY = "doran:token";
-  let current = null; // { user, letters? , mentees? }
+  const TOKEN_EXP_KEY = "doran:token-exp";
+  const GUARD = "#/bye"; // 로그인 상태에서 뒤로가기로 여기 오면 "로그아웃 하시겠어요?"
+  let current = null; // { user }
+  let notice = ""; // 로그인 화면에 보여 줄 안내 (예: 로그인 시간 만료)
+
+  let memoryToken = "";
+  const auth = {
+    get() {
+      if (memoryToken) return memoryToken;
+      try {
+        const t = localStorage.getItem(TOKEN_KEY), exp = Number(localStorage.getItem(TOKEN_EXP_KEY));
+        if (t && exp > Date.now()) return t;
+        if (t) { this.clear(); notice = "로그인한 지 24시간이 지나 다시 로그인해 주세요."; }
+      } catch (e) { /* 저장소 없음 */ }
+      return "";
+    },
+    set(token, expiresAt) {
+      try {
+        localStorage.setItem(TOKEN_KEY, token);
+        localStorage.setItem(TOKEN_EXP_KEY, String(expiresAt || Date.now() + 24 * 3600 * 1000));
+      } catch (e) { /* 저장 불가(사생활 보호 모드 등): 이번 화면에서만 로그인 */ memoryToken = token; }
+    },
+    clear() {
+      memoryToken = "";
+      try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(TOKEN_EXP_KEY); } catch (e) { /* 무시 */ }
+      store.remove(TOKEN_KEY);
+    }
+  };
+
+  // 예전 버전(탭을 닫으면 풀리는 로그인)에서 넘어온 경우 한 번 옮겨 줌
+  try {
+    const old = store.get(TOKEN_KEY, "");
+    if (old && !localStorage.getItem(TOKEN_KEY)) { auth.set(old); store.remove(TOKEN_KEY); }
+  } catch (e) { /* 무시 */ }
 
   async function request(method, path, body) {
-    const token = store.get(TOKEN_KEY, "");
+    const token = auth.get();
     let res;
     try {
       res = await fetch(API + path, {
@@ -106,19 +140,39 @@
     }
     const data = res.status === 204 ? {} : await res.json().catch(() => ({}));
     if (!res.ok) {
-      if (res.status === 401 && path !== "/login") { store.remove(TOKEN_KEY); current = null; }
+      if (res.status === 401 && path !== "/login") {
+        if (token) notice = "로그인 시간이 지나 다시 로그인해 주세요.";
+        auth.clear(); current = null;
+      }
       throw Object.assign(new Error(data.error || "문제가 생겼어요. 다시 시도해 주세요."), { status: res.status });
     }
     return data;
   }
 
   async function logout() {
-    if (editorDirty() && !confirm("저장하지 않은 편지가 있어요. 나갈까요?")) return;
+    if (editorDirty() && !(await askConfirm("저장하지 않은 편지가 있어요", "저장하지 않고 로그아웃할까요?", "로그아웃", "취소"))) return;
     try { await request("POST", "/logout"); } catch (e) { /* 이미 만료돼도 무시 */ }
-    store.remove(TOKEN_KEY);
+    auth.clear();
     store.remove(PROMPTED_KEY);
+    store.remove(GUARD_FLAG);
     current = null;
-    go("#/");
+    location.replace(location.pathname + location.search + "#/");
+  }
+
+  // 왼쪽 위 < 버튼, 그리고 뒤로가기로 로그인 화면 쪽에 왔을 때
+  async function confirmLogout() {
+    return askConfirm("로그아웃 하시겠어요?", "다시 들어오려면 아이디와 비밀번호를 입력해야 해요.", "로그아웃", "계속 볼게요");
+  }
+  async function onBackButton() {
+    if (await confirmLogout()) logout();
+  }
+
+  /* 로그인한 화면 아래에 '뒤로가기 지킴이' 기록을 하나 깔아 둠 → 뒤로가기하면 로그아웃 확인 */
+  const GUARD_FLAG = "doran:guard"; // 이 탭에 지킴이를 깔았는지 (새로고침해도 유지)
+  function installGuard(route) {
+    history.replaceState({ doranGuard: 1 }, "", GUARD);
+    history.pushState(null, "", route);
+    store.set(GUARD_FLAG, "1");
   }
 
   /* ---------- 라우팅 ---------- */
@@ -131,16 +185,46 @@
     else location.hash = hash;
   }
 
+  let firstRender = true;
+  let guarding = false;
+
   async function render() {
     closeModal();
     closeEditor(true);
     hideDialog(pwDialog);
     closeViewer();
     window.removeEventListener("resize", onPuzzleResize);
-    const route = location.hash;
-    if (route.length > 2 && !current && store.get(TOKEN_KEY, "")) {
+    let route = location.hash;
+    const isFirst = firstRender;
+    firstRender = false;
+
+    if (!current && auth.get()) {
       try { current = { user: (await request("GET", "/me")).user }; } catch (e) { current = null; }
     }
+
+    // 로그인 상태에서 로그인 화면(#/) 또는 지킴이(#/bye)로 온 경우
+    if (current && (route === "" || route === "#/" || route === GUARD)) {
+      if (isFirst || route !== GUARD) {
+        // 사이트를 새로 열었거나 주소를 직접 친 경우 → 그냥 내 화면으로
+        installGuard(homeRoute(current.user.role));
+        return render();
+      }
+      if (guarding) return;
+      guarding = true;
+      const ok = await confirmLogout();
+      guarding = false;
+      if (ok) return logout();
+      // 계속 보기: 앞 화면으로 되돌아가기 (없으면 내 첫 화면)
+      const before = location.hash;
+      history.forward();
+      setTimeout(() => {
+        if (location.hash === before) { history.pushState(null, "", homeRoute(current.user.role)); render(); }
+      }, 350);
+      return;
+    }
+    // 로그인한 채로 사이트를 다시 연 경우(새 탭 등): 지킴이를 깔아 둠. 같은 탭 새로고침은 이미 깔려 있음
+    if (current && isFirst && store.get(GUARD_FLAG, "") !== "1") installGuard(route);
+
     app.replaceChildren();
     try {
       if (current && current.user.role === "mentee" && route === "#/letters") {
@@ -160,13 +244,14 @@
         renderMentor(current.user, data.mentees);
         promptPasswordChange();
       } else if (current) {
-        return go(homeRoute(current.user.role));
+        history.replaceState(history.state, "", homeRoute(current.user.role));
+        return render();
       } else {
         if (route) history.replaceState(null, "", location.pathname + location.search);
         renderHome();
       }
     } catch (e) {
-      if (e.status === 401) return go("#/");
+      if (e.status === 401) { history.replaceState(null, "", location.pathname + location.search); return render(); }
       renderError(e.message);
     }
     window.scrollTo(0, 0);
@@ -198,7 +283,8 @@
     const idField = h("label", { class: "search", html: ICON_USER }, [idInput]);
     const pwField = h("label", { class: "search", html: ICON_LOCK }, [pwInput]);
     const submit = h("button", { class: "pill", type: "submit", text: "들어가기" });
-    const msg = h("p", { class: "lock__msg", id: "login-msg", role: "alert" });
+    const msg = h("p", { class: "lock__msg", id: "login-msg", role: "alert", text: notice });
+    notice = "";
     const forgotBox = h("div", { class: "forgot", id: "forgot-help", hidden: true }, [
       h("p", { class: "forgot__title", text: "비밀번호는 관리자에게 문의해 주세요" }),
       h("p", { text: "이름과 아이디를 알려 주면 새 임시 비밀번호를 받을 수 있어요." }),
@@ -237,9 +323,11 @@
         msg.textContent = "";
         try {
           const data = await request("POST", "/login", { login: idInput.value, password: pwInput.value });
-          store.set(TOKEN_KEY, data.token);
+          auth.set(data.token, data.expiresAt);
+          notice = "";
           current = { user: data.user };
-          go(homeRoute(data.user.role));
+          installGuard(homeRoute(data.user.role));
+          render();
         } catch (err) {
           submit.disabled = false;
           submit.textContent = "들어가기";
@@ -854,7 +942,7 @@
   function hideDialog(el) {
     if (el.hidden) return;
     el.hidden = true;
-    if (modal.hidden && editor.hidden && pwDialog.hidden && viewer.hidden) document.body.classList.remove("is-locked");
+    if (modal.hidden && editor.hidden && pwDialog.hidden && viewer.hidden && confirmDlg.hidden) document.body.classList.remove("is-locked");
     if (lastFocus && document.contains(lastFocus)) lastFocus.focus({ preventScroll: true });
   }
 
@@ -931,6 +1019,29 @@
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") editor.querySelector("form").requestSubmit();
   });
 
+  /* 확인 창 (로그아웃 등) */
+  const confirmDlg = document.getElementById("confirm");
+  let confirmResolve = null;
+  function askConfirm(title, text, okLabel, cancelLabel) {
+    if (confirmResolve) confirmResolve(false);
+    document.getElementById("confirm-title").textContent = title;
+    document.getElementById("confirm-text").textContent = text;
+    const ok = document.getElementById("confirm-ok"), cancel = document.getElementById("confirm-cancel");
+    ok.textContent = okLabel || "확인";
+    cancel.textContent = cancelLabel || "취소";
+    showDialog(confirmDlg, document.activeElement, cancel);
+    return new Promise((resolve) => { confirmResolve = resolve; });
+  }
+  function closeConfirm(result) {
+    if (confirmDlg.hidden) return;
+    hideDialog(confirmDlg);
+    const r = confirmResolve; confirmResolve = null;
+    if (r) r(result);
+  }
+  document.getElementById("confirm-ok").addEventListener("click", () => closeConfirm(true));
+  document.getElementById("confirm-cancel").addEventListener("click", () => closeConfirm(false));
+  confirmDlg.querySelector(".modal__backdrop").addEventListener("click", () => closeConfirm(false));
+
   /* 비밀번호 변경 */
   const pwDialog = document.getElementById("pwdialog");
   const pwForm = pwDialog.querySelector("form");
@@ -993,6 +1104,15 @@
     });
   }
   document.addEventListener("keydown", (e) => {
+    if (!confirmDlg.hidden) {
+      if (e.key === "Escape") { closeConfirm(false); return; }
+      if (e.key === "Tab") {
+        const items = [document.getElementById("confirm-cancel"), document.getElementById("confirm-ok")];
+        const i = items.indexOf(document.activeElement);
+        e.preventDefault(); items[(i + (e.shiftKey ? -1 : 1) + 2) % 2].focus();
+      }
+      return;
+    }
     if (!viewer.hidden && viewing) {
       if (e.key === "Escape") return closeViewer();
       if (e.key === "ArrowLeft") return showPhoto(viewing.index - 1);
